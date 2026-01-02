@@ -21,16 +21,23 @@ router = APIRouter(prefix="/api/muestras", tags=["muestras"])
 
 class MuestraCreate(BaseModel):
     id_caso: int
-    tipo_muestra: str
-    cantidad: Optional[int] = 1
-    fecha_toma: date
+    codigo_muestra: str
+    numero_arete: Optional[str] = None
+    id_especie: Optional[int] = None
+    id_raza: Optional[int] = None
+    tipo_muestra: Optional[str] = None
+    fecha_toma: Optional[date] = None
     observaciones: Optional[str] = None
-    estatus: str = "PENDIENTE"  # PENDIENTE, EN_PROCESO, COMPLETADO, RECHAZADO
+    estatus: str = "PENDIENTE"  # PENDIENTE, PROCESADA, CANCELADA
+    id_usuario_captura: int
 
 
 class MuestraUpdate(BaseModel):
+    codigo_muestra: Optional[str] = None
+    numero_arete: Optional[str] = None
+    id_especie: Optional[int] = None
+    id_raza: Optional[int] = None
     tipo_muestra: Optional[str] = None
-    cantidad: Optional[int] = None
     fecha_toma: Optional[date] = None
     observaciones: Optional[str] = None
     estatus: Optional[str] = None
@@ -43,7 +50,9 @@ class MuestraUpdate(BaseModel):
 @router.get("")
 def consultar_muestras(
     id_caso: Optional[int] = None,
-    numero_caso: Optional[str] = None,
+    codigo_muestra: Optional[str] = None,
+    numero_arete: Optional[str] = None,
+    id_especie: Optional[int] = None,
     tipo_muestra: Optional[str] = None,
     estatus: Optional[str] = None,
     fecha_desde: Optional[date] = None,
@@ -53,24 +62,32 @@ def consultar_muestras(
 ):
     """
     Consulta muestras con filtros opcionales
+    Usa la estructura real de la BD: codigo_muestra, numero_arete, id_especie, id_raza
     """
     sql = """
         SELECT
             m.id_muestra,
             m.id_caso,
+            m.codigo_muestra,
+            m.numero_arete,
+            m.id_especie,
+            m.id_raza,
             m.tipo_muestra,
-            m.cantidad,
             m.fecha_toma,
             m.observaciones,
             m.estatus,
-            m.fecha_creacion,
+            m.created_at,
             c.numero_caso,
             u.clave_upp,
-            p.nombre AS propietario
+            p.nombre AS nombre_propietario,
+            esp.nombre AS especie,
+            r.nombre AS raza
         FROM muestras m
-        JOIN casos c ON c.id_caso = m.id_caso
-        JOIN upp u ON u.id_upp = c.id_upp
-        JOIN propietarios p ON p.id_propietario = u.id_propietario
+        INNER JOIN casos c ON c.id_caso = m.id_caso
+        INNER JOIN upp u ON u.id_upp = c.id_upp
+        INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
+        LEFT JOIN cat_especie esp ON esp.id_especie = m.id_especie
+        LEFT JOIN cat_raza r ON r.id_raza = m.id_raza
         WHERE 1=1
     """
     params = {"limit": int(limit)}
@@ -79,9 +96,17 @@ def consultar_muestras(
         sql += " AND m.id_caso = :id_caso"
         params["id_caso"] = id_caso
 
-    if numero_caso:
-        sql += " AND c.numero_caso LIKE :numero_caso"
-        params["numero_caso"] = f"%{numero_caso.strip()}%"
+    if codigo_muestra:
+        sql += " AND m.codigo_muestra LIKE :codigo_muestra"
+        params["codigo_muestra"] = f"%{codigo_muestra.strip()}%"
+
+    if numero_arete:
+        sql += " AND m.numero_arete LIKE :numero_arete"
+        params["numero_arete"] = f"%{numero_arete.strip()}%"
+
+    if id_especie:
+        sql += " AND m.id_especie = :id_especie"
+        params["id_especie"] = id_especie
 
     if tipo_muestra:
         sql += " AND m.tipo_muestra LIKE :tipo_muestra"
@@ -102,7 +127,34 @@ def consultar_muestras(
     sql += " ORDER BY m.id_muestra DESC LIMIT :limit"
 
     rows = db.execute(text(sql), params).mappings().all()
-    return [dict(r) for r in rows]
+
+    # Mapear campos de BD real a nombres esperados por frontend
+    muestras = []
+    for row in rows:
+        muestra_data = {
+            "id_muestra": row["id_muestra"],
+            "folio_muestra": row["codigo_muestra"],  # Mapear codigo_muestra -> folio_muestra
+            "id_caso": row["id_caso"],
+            "numero_caso": row["numero_caso"],
+            "codigo_muestra": row["codigo_muestra"],
+            "numero_arete": row["numero_arete"],
+            "clave_upp": row["clave_upp"],
+            "nombre_propietario": row["nombre_propietario"],
+            "id_especie": row["id_especie"],
+            "id_raza": row["id_raza"],
+            "especie": row["especie"],
+            "raza": row["raza"],
+            "tipo_muestra": row["tipo_muestra"],
+            "fecha_toma": row["fecha_toma"],
+            "fecha_recepcion": row["created_at"],  # Usar created_at como fecha_recepcion
+            "observaciones": row["observaciones"],
+            "estatus": row["estatus"],
+            "estatus_muestra": row["estatus"],  # Alias para frontend
+            "created_at": row["created_at"]
+        }
+        muestras.append(muestra_data)
+
+    return muestras
 
 
 # ==================== EMPIEZAN CAMBIOS ====================
@@ -118,19 +170,26 @@ def obtener_muestra(id_muestra: int, db: Session = Depends(get_db)):
         SELECT
             m.id_muestra,
             m.id_caso,
+            m.codigo_muestra,
+            m.numero_arete,
+            m.id_especie,
+            m.id_raza,
             m.tipo_muestra,
-            m.cantidad,
             m.fecha_toma,
             m.observaciones,
             m.estatus,
-            m.fecha_creacion,
+            m.created_at,
             c.numero_caso,
             u.clave_upp,
-            p.nombre AS propietario
+            p.nombre AS nombre_propietario,
+            esp.nombre AS especie,
+            r.nombre AS raza
         FROM muestras m
-        JOIN casos c ON c.id_caso = m.id_caso
-        JOIN upp u ON u.id_upp = c.id_upp
-        JOIN propietarios p ON p.id_propietario = u.id_propietario
+        INNER JOIN casos c ON c.id_caso = m.id_caso
+        INNER JOIN upp u ON u.id_upp = c.id_upp
+        INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
+        LEFT JOIN cat_especie esp ON esp.id_especie = m.id_especie
+        LEFT JOIN cat_raza r ON r.id_raza = m.id_raza
         WHERE m.id_muestra = :id_muestra
     """)
 
@@ -139,7 +198,30 @@ def obtener_muestra(id_muestra: int, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="Muestra no encontrada")
 
-    return dict(row)
+    # Mapear campos de BD real a nombres esperados por frontend
+    muestra_data = {
+        "id_muestra": row["id_muestra"],
+        "folio_muestra": row["codigo_muestra"],
+        "id_caso": row["id_caso"],
+        "numero_caso": row["numero_caso"],
+        "codigo_muestra": row["codigo_muestra"],
+        "numero_arete": row["numero_arete"],
+        "clave_upp": row["clave_upp"],
+        "nombre_propietario": row["nombre_propietario"],
+        "id_especie": row["id_especie"],
+        "id_raza": row["id_raza"],
+        "especie": row["especie"],
+        "raza": row["raza"],
+        "tipo_muestra": row["tipo_muestra"],
+        "fecha_toma": row["fecha_toma"],
+        "fecha_recepcion": row["created_at"],
+        "observaciones": row["observaciones"],
+        "estatus": row["estatus"],
+        "estatus_muestra": row["estatus"],
+        "created_at": row["created_at"]
+    }
+
+    return muestra_data
 
 
 # ==================== EMPIEZAN CAMBIOS ====================

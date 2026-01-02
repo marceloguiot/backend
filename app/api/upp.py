@@ -18,31 +18,39 @@ router = APIRouter(prefix="/api/upp", tags=["upp"])
 # ==================== EMPIEZAN CAMBIOS ====================
 
 class UppCreate(BaseModel):
+    # Campos que existen en la BD real
     clave_upp: str
-    nombre_predio: str
     id_propietario: int
-    calle: Optional[str] = None
-    municipio: str
-    localidad: Optional[str] = None
-    codigo_postal: Optional[str] = None
-    estado: str = "Veracruz"
-    latitud: Optional[float] = None
-    longitud: Optional[float] = None
-    estatus: bool = True
-
-
-class UppUpdate(BaseModel):
-    clave_upp: Optional[str] = None
-    nombre_predio: Optional[str] = None
-    id_propietario: Optional[int] = None
-    calle: Optional[str] = None
     municipio: Optional[str] = None
     localidad: Optional[str] = None
+    direccion: Optional[str] = None
+    estatus: bool = True
+
+    # Campos del frontend que no existen en BD (se ignoran o mapean)
+    nombre_predio: Optional[str] = None
+    calle: Optional[str] = None
     codigo_postal: Optional[str] = None
     estado: Optional[str] = None
     latitud: Optional[float] = None
     longitud: Optional[float] = None
+
+
+class UppUpdate(BaseModel):
+    # Campos que existen en la BD real
+    clave_upp: Optional[str] = None
+    id_propietario: Optional[int] = None
+    municipio: Optional[str] = None
+    localidad: Optional[str] = None
+    direccion: Optional[str] = None
     estatus: Optional[bool] = None
+
+    # Campos del frontend que no existen en BD (se ignoran)
+    nombre_predio: Optional[str] = None
+    calle: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    estado: Optional[str] = None
+    latitud: Optional[float] = None
+    longitud: Optional[float] = None
 
 # ==================== TERMINAN CAMBIOS ====================
 
@@ -59,19 +67,15 @@ def upp_por_clave(
         SELECT
           u.id_upp,
           u.clave_upp,
-          u.nombre_predio,
-          u.calle,
-          u.codigo_postal,
-          u.estado,
-          u.latitud,
-          u.longitud,
+          u.id_propietario,
           u.municipio,
           u.localidad,
+          u.direccion,
           u.estatus,
-          u.id_propietario,
+          u.fecha_registro,
           p.nombre AS propietario
         FROM upp u
-        JOIN propietarios p ON p.id_propietario = u.id_propietario
+        INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
         WHERE UPPER(u.clave_upp) = :clave
         LIMIT 1
     """)
@@ -80,7 +84,27 @@ def upp_por_clave(
     if not row:
         raise HTTPException(status_code=404, detail="UPP no encontrada.")
 
-    return dict(row)
+    # Mapear campos reales de BD a campos esperados por frontend
+    upp_data = {
+        "id_upp": row["id_upp"],
+        "clave_upp": row["clave_upp"],
+        "id_propietario": row["id_propietario"],
+        "propietario": row["propietario"],
+        "municipio": row["municipio"],
+        "localidad": row["localidad"],
+        "direccion": row["direccion"],
+        "estatus": bool(row["estatus"]),
+        "fecha_registro": row["fecha_registro"],
+        # Campos que no existen en BD
+        "nombre_predio": "",
+        "calle": row["direccion"],  # Mapear direccion -> calle
+        "codigo_postal": "",
+        "estado": "Veracruz",
+        "latitud": None,
+        "longitud": None
+    }
+
+    return upp_data
 
 
 # ==================== ENDPOINT ORIGINAL (sin cambios) ====================
@@ -98,16 +122,18 @@ def buscar_upp(
         SELECT
           u.id_upp,
           u.clave_upp,
-          u.nombre_predio,
+          u.id_propietario,
           u.municipio,
           u.localidad,
+          u.direccion,
           u.estatus,
+          u.fecha_registro,
           p.nombre AS propietario
         FROM upp u
-        JOIN propietarios p ON p.id_propietario = u.id_propietario
+        INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
         WHERE
           (:solo_activas = 0 OR u.estatus = 1)
-          AND (:s = '' OR u.clave_upp LIKE :like OR p.nombre LIKE :like OR u.nombre_predio LIKE :like)
+          AND (:s = '' OR u.clave_upp LIKE :like OR p.nombre LIKE :like)
         ORDER BY u.clave_upp ASC
         LIMIT :limit
     """)
@@ -119,7 +145,30 @@ def buscar_upp(
         "solo_activas": 1 if solo_activas else 0
     }).mappings().all()
 
-    return [dict(r) for r in rows]
+    # Mapear campos reales de BD a campos esperados por frontend
+    upps = []
+    for row in rows:
+        upp_data = {
+            "id_upp": row["id_upp"],
+            "clave_upp": row["clave_upp"],
+            "id_propietario": row["id_propietario"],
+            "propietario": row["propietario"],
+            "municipio": row["municipio"],
+            "localidad": row["localidad"],
+            "direccion": row["direccion"],
+            "estatus": bool(row["estatus"]),
+            "fecha_registro": row["fecha_registro"],
+            # Campos que no existen en BD
+            "nombre_predio": "",
+            "calle": row["direccion"],
+            "codigo_postal": "",
+            "estado": "Veracruz",
+            "latitud": None,
+            "longitud": None
+        }
+        upps.append(upp_data)
+
+    return upps
 
 
 # ==================== EMPIEZAN CAMBIOS ====================

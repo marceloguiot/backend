@@ -21,30 +21,32 @@ router = APIRouter(prefix="/api/usuarios", tags=["usuarios"])
 # ==================== EMPIEZAN CAMBIOS ====================
 
 class UsuarioCreate(BaseModel):
+    # Campos que vienen del frontend (estructura antigua)
     nombre: str
-    apellido_paterno: str
+    apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
     nombre_usuario: str
-    correo: EmailStr
+    correo: Optional[str] = None
     password: str
-    tipo_usuario: int
+    tipo_usuario: int  # id_rol en la BD real
     clave_de_rumiantes: Optional[str] = None
-    vigencia_inicio: date
-    vigencia_fin: date
+    vigencia_inicio: Optional[str] = None
+    vigencia_fin: Optional[str] = None
     activo: bool = True
 
 
 class UsuarioUpdate(BaseModel):
+    # Campos que vienen del frontend (estructura antigua)
     nombre: Optional[str] = None
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
     nombre_usuario: Optional[str] = None
-    correo: Optional[EmailStr] = None
+    correo: Optional[str] = None
     password: Optional[str] = None
-    tipo_usuario: Optional[int] = None
+    tipo_usuario: Optional[int] = None  # id_rol en la BD real
     clave_de_rumiantes: Optional[str] = None
-    vigencia_inicio: Optional[date] = None
-    vigencia_fin: Optional[date] = None
+    vigencia_inicio: Optional[str] = None
+    vigencia_fin: Optional[str] = None
     activo: Optional[bool] = None
 
 
@@ -59,10 +61,12 @@ def hash_password(password: str) -> str:
 
 @router.get("")
 def consultar_usuarios(
+    # Parámetros con nombres del frontend (estructura antigua)
     nombre_usuario: Optional[str] = None,
-    correo: Optional[str] = None,
     clave_de_rumiantes: Optional[str] = None,
-    tipo_usuario: Optional[int] = None,
+    correo: Optional[str] = None,
+    # Parámetros adicionales
+    nombre: Optional[str] = None,
     activo: Optional[bool] = None,
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
@@ -73,39 +77,33 @@ def consultar_usuarios(
     sql = """
         SELECT
             u.id_usuario,
+            u.usuario,
             u.nombre,
-            u.apellido_paterno,
-            u.apellido_materno,
-            u.nombre_usuario,
-            u.correo,
-            u.tipo_usuario,
-            u.clave_de_rumiantes,
-            u.vigencia_inicio,
-            u.vigencia_fin,
+            u.id_rol,
             u.activo,
             u.fecha_creacion,
-            t.nombre_tipo
+            r.clave as rol_clave,
+            r.descripcion as rol_descripcion
         FROM usuarios u
-        LEFT JOIN tipos_usuario t ON t.id_tipo = u.tipo_usuario
+        INNER JOIN cat_rol r ON r.id_rol = u.id_rol
         WHERE 1=1
     """
     params = {"limit": int(limit)}
 
+    # Mapear nombre_usuario del frontend a usuario de la BD
     if nombre_usuario:
-        sql += " AND u.nombre_usuario LIKE :nombre_usuario"
-        params["nombre_usuario"] = f"%{nombre_usuario.strip()}%"
+        sql += " AND u.usuario LIKE :usuario"
+        params["usuario"] = f"%{nombre_usuario.strip()}%"
 
-    if correo:
-        sql += " AND u.correo LIKE :correo"
-        params["correo"] = f"%{correo.strip()}%"
+    if nombre:
+        sql += " AND u.nombre LIKE :nombre"
+        params["nombre"] = f"%{nombre.strip()}%"
 
-    if clave_de_rumiantes:
-        sql += " AND u.clave_de_rumiantes LIKE :clave_de_rumiantes"
-        params["clave_de_rumiantes"] = f"%{clave_de_rumiantes.strip()}%"
-
-    if tipo_usuario is not None:
-        sql += " AND u.tipo_usuario = :tipo_usuario"
-        params["tipo_usuario"] = int(tipo_usuario)
+    # Nota: clave_de_rumiantes y correo no existen en BD real, se ignoran
+    # if clave_de_rumiantes:
+    #     pass  # Campo no existe en BD
+    # if correo:
+    #     pass  # Campo no existe en BD
 
     if activo is not None:
         sql += " AND u.activo = :activo"
@@ -115,12 +113,27 @@ def consultar_usuarios(
 
     rows = db.execute(text(sql), params).mappings().all()
 
-    # Formatear respuesta
+    # Formatear respuesta mapeando campos reales de DB a campos esperados por frontend
     usuarios = []
     for row in rows:
-        usuario = dict(row)
-        usuario["nombre_completo"] = f"{usuario['nombre']} {usuario['apellido_paterno']} {usuario.get('apellido_materno', '')}".strip()
-        usuarios.append(usuario)
+        usuario_data = {
+            "id_usuario": row["id_usuario"],
+            "nombre": row["nombre"],
+            "apellido_paterno": "",  # No existe en BD real
+            "apellido_materno": "",  # No existe en BD real
+            "nombre_completo": row["nombre"],
+            "nombre_usuario": row["usuario"],  # Mapear usuario -> nombre_usuario
+            "correo": "",  # No existe en BD real
+            "tipo_usuario": row["id_rol"],  # Mapear id_rol -> tipo_usuario
+            "clave_de_rumiantes": "",  # No existe en BD real
+            "vigencia_inicio": "",  # No existe en BD real
+            "vigencia_fin": "",  # No existe en BD real
+            "activo": bool(row["activo"]),
+            "fecha_creacion": row["fecha_creacion"],
+            "rol_clave": row["rol_clave"],
+            "rol_descripcion": row["rol_descripcion"]
+        }
+        usuarios.append(usuario_data)
 
     return usuarios
 
@@ -137,20 +150,15 @@ def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
     sql = text("""
         SELECT
             u.id_usuario,
+            u.usuario,
             u.nombre,
-            u.apellido_paterno,
-            u.apellido_materno,
-            u.nombre_usuario,
-            u.correo,
-            u.tipo_usuario,
-            u.clave_de_rumiantes,
-            u.vigencia_inicio,
-            u.vigencia_fin,
+            u.id_rol,
             u.activo,
             u.fecha_creacion,
-            t.nombre_tipo
+            r.clave as rol_clave,
+            r.descripcion as rol_descripcion
         FROM usuarios u
-        LEFT JOIN tipos_usuario t ON t.id_tipo = u.tipo_usuario
+        INNER JOIN cat_rol r ON r.id_rol = u.id_rol
         WHERE u.id_usuario = :id_usuario
     """)
 
@@ -159,10 +167,26 @@ def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    usuario = dict(row)
-    usuario["nombre_completo"] = f"{usuario['nombre']} {usuario['apellido_paterno']} {usuario.get('apellido_materno', '')}".strip()
+    # Mapear campos reales de DB a campos esperados por frontend
+    usuario_data = {
+        "id_usuario": row["id_usuario"],
+        "nombre": row["nombre"],
+        "apellido_paterno": "",
+        "apellido_materno": "",
+        "nombre_completo": row["nombre"],
+        "nombre_usuario": row["usuario"],
+        "correo": "",
+        "tipo_usuario": row["id_rol"],
+        "clave_de_rumiantes": "",
+        "vigencia_inicio": "",
+        "vigencia_fin": "",
+        "activo": bool(row["activo"]),
+        "fecha_creacion": row["fecha_creacion"],
+        "rol_clave": row["rol_clave"],
+        "rol_descripcion": row["rol_descripcion"]
+    }
 
-    return usuario
+    return usuario_data
 
 
 # ==================== EMPIEZAN CAMBIOS ====================
@@ -173,14 +197,15 @@ def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
 def crear_usuario(payload: UsuarioCreate, db: Session = Depends(get_db)):
     """
     Crea un nuevo usuario en el sistema
+    Mapea campos del frontend (estructura antigua) a campos reales de BD
     """
     try:
         # Validar que el nombre de usuario no exista
         check_sql = text("""
             SELECT id_usuario FROM usuarios
-            WHERE nombre_usuario = :nombre_usuario
+            WHERE usuario = :usuario
         """)
-        existe = db.execute(check_sql, {"nombre_usuario": payload.nombre_usuario}).first()
+        existe = db.execute(check_sql, {"usuario": payload.nombre_usuario}).first()
 
         if existe:
             raise HTTPException(
@@ -188,64 +213,49 @@ def crear_usuario(payload: UsuarioCreate, db: Session = Depends(get_db)):
                 detail="El nombre de usuario ya existe"
             )
 
-        # Validar que el correo no exista
-        check_email_sql = text("""
-            SELECT id_usuario FROM usuarios
-            WHERE correo = :correo
+        # Validar que el id_rol exista en cat_rol (tipo_usuario del frontend)
+        check_rol_sql = text("""
+            SELECT id_rol FROM cat_rol
+            WHERE id_rol = :id_rol
         """)
-        existe_email = db.execute(check_email_sql, {"correo": payload.correo}).first()
+        existe_rol = db.execute(check_rol_sql, {"id_rol": payload.tipo_usuario}).first()
 
-        if existe_email:
+        if not existe_rol:
             raise HTTPException(
                 status_code=400,
-                detail="El correo electrónico ya está registrado"
+                detail="El rol especificado no existe"
             )
 
         # Hash de la contraseña
         password_hash = hash_password(payload.password)
 
-        # Insertar usuario
+        # Construir nombre completo a partir de los campos del frontend
+        nombre_completo = f"{payload.nombre} {payload.apellido_paterno or ''} {payload.apellido_materno or ''}".strip()
+
+        # Insertar usuario usando solo los campos que existen en la BD real
         insert_sql = text("""
             INSERT INTO usuarios (
-                nombre,
-                apellido_paterno,
-                apellido_materno,
-                nombre_usuario,
-                correo,
+                usuario,
                 password_hash,
-                tipo_usuario,
-                clave_de_rumiantes,
-                vigencia_inicio,
-                vigencia_fin,
+                nombre,
+                id_rol,
                 activo,
                 fecha_creacion
             ) VALUES (
-                :nombre,
-                :apellido_paterno,
-                :apellido_materno,
-                :nombre_usuario,
-                :correo,
+                :usuario,
                 :password_hash,
-                :tipo_usuario,
-                :clave_de_rumiantes,
-                :vigencia_inicio,
-                :vigencia_fin,
+                :nombre,
+                :id_rol,
                 :activo,
                 NOW()
             )
         """)
 
         db.execute(insert_sql, {
-            "nombre": payload.nombre,
-            "apellido_paterno": payload.apellido_paterno,
-            "apellido_materno": payload.apellido_materno,
-            "nombre_usuario": payload.nombre_usuario,
-            "correo": payload.correo,
+            "usuario": payload.nombre_usuario,
             "password_hash": password_hash,
-            "tipo_usuario": payload.tipo_usuario,
-            "clave_de_rumiantes": payload.clave_de_rumiantes,
-            "vigencia_inicio": payload.vigencia_inicio,
-            "vigencia_fin": payload.vigencia_fin,
+            "nombre": nombre_completo,
+            "id_rol": payload.tipo_usuario,
             "activo": 1 if payload.activo else 0
         })
 
@@ -276,6 +286,7 @@ def crear_usuario(payload: UsuarioCreate, db: Session = Depends(get_db)):
 def actualizar_usuario(id_usuario: int, payload: UsuarioUpdate, db: Session = Depends(get_db)):
     """
     Actualiza los datos de un usuario existente
+    Mapea campos del frontend (estructura antigua) a campos reales de BD
     """
     try:
         # Verificar que el usuario existe
@@ -289,78 +300,69 @@ def actualizar_usuario(id_usuario: int, payload: UsuarioUpdate, db: Session = De
         campos = []
         params = {"id_usuario": id_usuario}
 
-        if payload.nombre is not None:
-            campos.append("nombre = :nombre")
-            params["nombre"] = payload.nombre
-
-        if payload.apellido_paterno is not None:
-            campos.append("apellido_paterno = :apellido_paterno")
-            params["apellido_paterno"] = payload.apellido_paterno
-
-        if payload.apellido_materno is not None:
-            campos.append("apellido_materno = :apellido_materno")
-            params["apellido_materno"] = payload.apellido_materno
-
+        # Mapear nombre_usuario del frontend a usuario de la BD
         if payload.nombre_usuario is not None:
             # Verificar que no exista otro usuario con ese nombre
             check_username = text("""
                 SELECT id_usuario FROM usuarios
-                WHERE nombre_usuario = :nombre_usuario AND id_usuario != :id_usuario
+                WHERE usuario = :usuario AND id_usuario != :id_usuario
             """)
             existe_username = db.execute(check_username, {
-                "nombre_usuario": payload.nombre_usuario,
+                "usuario": payload.nombre_usuario,
                 "id_usuario": id_usuario
             }).first()
 
             if existe_username:
                 raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
 
-            campos.append("nombre_usuario = :nombre_usuario")
-            params["nombre_usuario"] = payload.nombre_usuario
+            campos.append("usuario = :usuario")
+            params["usuario"] = payload.nombre_usuario
 
-        if payload.correo is not None:
-            # Verificar que no exista otro usuario con ese correo
-            check_email = text("""
-                SELECT id_usuario FROM usuarios
-                WHERE correo = :correo AND id_usuario != :id_usuario
-            """)
-            existe_email = db.execute(check_email, {
-                "correo": payload.correo,
-                "id_usuario": id_usuario
-            }).first()
+        # Si hay cambios en nombre, apellido_paterno o apellido_materno, actualizar campo nombre
+        if payload.nombre is not None or payload.apellido_paterno is not None or payload.apellido_materno is not None:
+            # Obtener valores actuales si no vienen en el payload
+            if payload.nombre is None or payload.apellido_paterno is None:
+                current_sql = text("SELECT nombre FROM usuarios WHERE id_usuario = :id_usuario")
+                current = db.execute(current_sql, {"id_usuario": id_usuario}).first()
+                # Asumimos que el nombre actual podría tener el formato "Nombre Apellido"
+                # pero solo usamos lo que viene en el payload
 
-            if existe_email:
-                raise HTTPException(status_code=400, detail="El correo ya está registrado")
-
-            campos.append("correo = :correo")
-            params["correo"] = payload.correo
+            nombre_completo = f"{payload.nombre or ''} {payload.apellido_paterno or ''} {payload.apellido_materno or ''}".strip()
+            if nombre_completo:
+                campos.append("nombre = :nombre")
+                params["nombre"] = nombre_completo
 
         if payload.password is not None:
             campos.append("password_hash = :password_hash")
             params["password_hash"] = hash_password(payload.password)
 
+        # Mapear tipo_usuario del frontend a id_rol de la BD
         if payload.tipo_usuario is not None:
-            campos.append("tipo_usuario = :tipo_usuario")
-            params["tipo_usuario"] = payload.tipo_usuario
+            # Validar que el id_rol exista en cat_rol
+            check_rol_sql = text("""
+                SELECT id_rol FROM cat_rol
+                WHERE id_rol = :id_rol
+            """)
+            existe_rol = db.execute(check_rol_sql, {"id_rol": payload.tipo_usuario}).first()
 
-        if payload.clave_de_rumiantes is not None:
-            campos.append("clave_de_rumiantes = :clave_de_rumiantes")
-            params["clave_de_rumiantes"] = payload.clave_de_rumiantes
+            if not existe_rol:
+                raise HTTPException(status_code=400, detail="El rol especificado no existe")
 
-        if payload.vigencia_inicio is not None:
-            campos.append("vigencia_inicio = :vigencia_inicio")
-            params["vigencia_inicio"] = payload.vigencia_inicio
-
-        if payload.vigencia_fin is not None:
-            campos.append("vigencia_fin = :vigencia_fin")
-            params["vigencia_fin"] = payload.vigencia_fin
+            campos.append("id_rol = :id_rol")
+            params["id_rol"] = payload.tipo_usuario
 
         if payload.activo is not None:
             campos.append("activo = :activo")
             params["activo"] = 1 if payload.activo else 0
 
+        # Nota: correo, clave_de_rumiantes, vigencia_inicio, vigencia_fin no existen en BD real
+        # por lo que se ignoran
+
         if not campos:
             raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+
+        # Agregar fecha_actualizacion
+        campos.append("fecha_actualizacion = NOW()")
 
         # Ejecutar UPDATE
         update_sql = f"""

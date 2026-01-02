@@ -16,26 +16,36 @@ router = APIRouter(prefix="/api/propietarios", tags=["propietarios"])
 # ==================== EMPIEZAN CAMBIOS ====================
 
 class PropietarioCreate(BaseModel):
+    # Campos que existen en la BD real
     nombre: str
-    apellido_paterno: str
-    apellido_materno: Optional[str] = None
-    curp: str
+    curp: Optional[str] = None
+    rfc: Optional[str] = None
     telefono: Optional[str] = None
+    estatus: str = "ACTIVO"  # ACTIVO o FINADO
+
+    # Campos del frontend que no existen en BD (se ignoran o mapean)
+    apellido_paterno: Optional[str] = None
+    apellido_materno: Optional[str] = None
     correo: Optional[EmailStr] = None
     calle: Optional[str] = None
-    municipio: str
+    municipio: Optional[str] = None
     localidad: Optional[str] = None
     cp: Optional[str] = None
-    estado: str = "Veracruz"
-    activo: bool = True
+    estado: Optional[str] = None
+    activo: Optional[bool] = None
 
 
 class PropietarioUpdate(BaseModel):
+    # Campos que existen en la BD real
     nombre: Optional[str] = None
+    curp: Optional[str] = None
+    rfc: Optional[str] = None
+    telefono: Optional[str] = None
+    estatus: Optional[str] = None
+
+    # Campos del frontend que no existen en BD (se ignoran o mapean)
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
-    curp: Optional[str] = None
-    telefono: Optional[str] = None
     correo: Optional[EmailStr] = None
     calle: Optional[str] = None
     municipio: Optional[str] = None
@@ -57,17 +67,12 @@ def propietario_por_curp(curp: str, db: Session = Depends(get_db)):
     q = text("""
         SELECT
             id_propietario,
-            curp,
-            apellido_paterno,
-            apellido_materno,
             nombre,
+            curp,
+            rfc,
             telefono,
-            correo,
-            calle,
-            municipio,
-            localidad,
-            cp,
-            estado
+            estatus,
+            fecha_registro
         FROM propietarios
         WHERE curp = :curp
         LIMIT 1
@@ -77,7 +82,28 @@ def propietario_por_curp(curp: str, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="Propietario no encontrado")
 
-    return dict(row)
+    # Mapear campos reales a campos esperados por frontend
+    propietario_data = {
+        "id_propietario": row["id_propietario"],
+        "nombre": row["nombre"],
+        "apellido_paterno": "",  # No existe en BD real
+        "apellido_materno": "",  # No existe en BD real
+        "nombre_completo": row["nombre"],
+        "curp": row["curp"],
+        "rfc": row["rfc"],
+        "telefono": row["telefono"],
+        "correo": "",  # No existe en BD real
+        "calle": "",  # No existe en BD real
+        "municipio": "",  # No existe en BD real
+        "localidad": "",  # No existe en BD real
+        "cp": "",  # No existe en BD real
+        "estado": "",  # No existe en BD real
+        "estatus": row["estatus"],
+        "activo": row["estatus"] == "ACTIVO",  # Mapear estatus -> activo
+        "fecha_registro": row["fecha_registro"]
+    }
+
+    return propietario_data
 
 
 # ==================== EMPIEZAN CAMBIOS ====================
@@ -89,6 +115,8 @@ def consultar_propietarios(
     curp: Optional[str] = None,
     nombre: Optional[str] = None,
     upp: Optional[str] = None,
+    estatus: Optional[str] = None,
+    # Parámetros del frontend que no existen en BD (se ignoran)
     municipio: Optional[str] = None,
     localidad: Optional[str] = None,
     activo: Optional[bool] = None,
@@ -97,22 +125,17 @@ def consultar_propietarios(
 ):
     """
     Consulta propietarios con filtros opcionales
+    Usa la estructura real de la BD: nombre, curp, rfc, telefono, estatus
     """
     sql = """
         SELECT DISTINCT
             p.id_propietario,
             p.nombre,
-            p.apellido_paterno,
-            p.apellido_materno,
             p.curp,
+            p.rfc,
             p.telefono,
-            p.correo,
-            p.calle,
-            p.municipio,
-            p.localidad,
-            p.cp,
-            p.estado,
-            p.activo
+            p.estatus,
+            p.fecha_registro
         FROM propietarios p
         LEFT JOIN upp u ON u.id_propietario = p.id_propietario
         WHERE 1=1
@@ -124,35 +147,51 @@ def consultar_propietarios(
         params["curp"] = f"%{curp.strip().upper()}%"
 
     if nombre:
-        sql += " AND (p.nombre LIKE :nombre OR p.apellido_paterno LIKE :nombre OR p.apellido_materno LIKE :nombre)"
+        sql += " AND p.nombre LIKE :nombre"
         params["nombre"] = f"%{nombre.strip()}%"
 
     if upp:
         sql += " AND u.clave_upp LIKE :upp"
         params["upp"] = f"%{upp.strip()}%"
 
-    if municipio:
-        sql += " AND p.municipio LIKE :municipio"
-        params["municipio"] = f"%{municipio.strip()}%"
+    if estatus:
+        sql += " AND p.estatus = :estatus"
+        params["estatus"] = estatus.strip().upper()
 
-    if localidad:
-        sql += " AND p.localidad LIKE :localidad"
-        params["localidad"] = f"%{localidad.strip()}%"
-
+    # Mapear activo (del frontend) a estatus (de la BD)
     if activo is not None:
-        sql += " AND p.activo = :activo"
-        params["activo"] = 1 if activo else 0
+        sql += " AND p.estatus = :estatus"
+        params["estatus"] = "ACTIVO" if activo else "FINADO"
+
+    # municipio y localidad no existen en la tabla propietarios real, se ignoran
 
     sql += " ORDER BY p.id_propietario DESC LIMIT :limit"
 
     rows = db.execute(text(sql), params).mappings().all()
 
-    # Formatear respuesta
+    # Mapear campos reales de BD a campos esperados por frontend
     propietarios = []
     for row in rows:
-        propietario = dict(row)
-        propietario["nombre_completo"] = f"{propietario['nombre']} {propietario['apellido_paterno']} {propietario.get('apellido_materno', '')}".strip()
-        propietarios.append(propietario)
+        propietario_data = {
+            "id_propietario": row["id_propietario"],
+            "nombre": row["nombre"],
+            "apellido_paterno": "",  # No existe en BD real
+            "apellido_materno": "",  # No existe en BD real
+            "nombre_completo": row["nombre"],
+            "curp": row["curp"],
+            "rfc": row["rfc"],
+            "telefono": row["telefono"],
+            "correo": "",  # No existe en BD real
+            "calle": "",  # No existe en BD real
+            "municipio": "",  # No existe en BD real
+            "localidad": "",  # No existe en BD real
+            "cp": "",  # No existe en BD real
+            "estado": "",  # No existe en BD real
+            "estatus": row["estatus"],
+            "activo": row["estatus"] == "ACTIVO",  # Mapear estatus -> activo
+            "fecha_registro": row["fecha_registro"]
+        }
+        propietarios.append(propietario_data)
 
     return propietarios
 

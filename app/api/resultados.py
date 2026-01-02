@@ -20,19 +20,35 @@ router = APIRouter(prefix="/api/resultados", tags=["resultados"])
 # ==================== EMPIEZAN CAMBIOS ====================
 
 class ResultadoCreate(BaseModel):
+    # Campos que existen en la BD real
     id_muestra: int
-    prueba_realizada: str
-    resultado: str
-    fecha_analisis: date
+    id_prueba: int
+    resultado: str  # ENUM: POSITIVO, NEGATIVO, INCONCLUSO
+    valor: Optional[str] = None
     observaciones: Optional[str] = None
+    estatus: str = "CAPTURADO"  # ENUM: CAPTURADO, VALIDADO, RECHAZADO
+    fecha_resultado: date
+    id_usuario_captura: int
+
+    # Campos del frontend que no existen en BD (se ignoran o mapean)
+    prueba_realizada: Optional[str] = None
+    fecha_analisis: Optional[date] = None
     id_usuario_responsable: Optional[int] = None
 
 
 class ResultadoUpdate(BaseModel):
-    prueba_realizada: Optional[str] = None
+    # Campos que existen en la BD real
+    id_prueba: Optional[int] = None
     resultado: Optional[str] = None
-    fecha_analisis: Optional[date] = None
+    valor: Optional[str] = None
     observaciones: Optional[str] = None
+    estatus: Optional[str] = None
+    fecha_resultado: Optional[date] = None
+    id_usuario_valida: Optional[int] = None
+
+    # Campos del frontend que no existen en BD (se ignoran)
+    prueba_realizada: Optional[str] = None
+    fecha_analisis: Optional[date] = None
     id_usuario_responsable: Optional[int] = None
 
 
@@ -45,38 +61,51 @@ def consultar_resultados(
     id_muestra: Optional[int] = None,
     id_caso: Optional[int] = None,
     numero_caso: Optional[str] = None,
-    prueba_realizada: Optional[str] = None,
+    id_prueba: Optional[int] = None,
     resultado: Optional[str] = None,
+    estatus: Optional[str] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    # Parámetros del frontend que no existen en BD (se ignoran)
+    prueba_realizada: Optional[str] = None,
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
     """
     Consulta resultados con filtros opcionales
+    Usa la estructura real de la BD
     """
     sql = """
         SELECT
             r.id_resultado,
             r.id_muestra,
-            r.prueba_realizada,
+            r.id_prueba,
             r.resultado,
-            r.fecha_analisis,
+            r.valor,
             r.observaciones,
-            r.id_usuario_responsable,
-            r.fecha_creacion,
+            r.estatus,
+            r.fecha_resultado,
+            r.id_usuario_captura,
+            r.id_usuario_valida,
+            r.fecha_validacion,
+            r.created_at,
+            m.codigo_muestra,
             m.tipo_muestra,
             m.id_caso,
             c.numero_caso,
             u.clave_upp,
             p.nombre AS propietario,
-            usr.nombre_usuario AS usuario_responsable
+            pr.nombre AS prueba_nombre,
+            usr_cap.usuario AS usuario_captura,
+            usr_val.usuario AS usuario_valida
         FROM resultados r
-        JOIN muestras m ON m.id_muestra = r.id_muestra
-        JOIN casos c ON c.id_caso = m.id_caso
-        JOIN upp u ON u.id_upp = c.id_upp
-        JOIN propietarios p ON p.id_propietario = u.id_propietario
-        LEFT JOIN usuarios usr ON usr.id_usuario = r.id_usuario_responsable
+        INNER JOIN muestras m ON m.id_muestra = r.id_muestra
+        INNER JOIN casos c ON c.id_caso = m.id_caso
+        INNER JOIN upp u ON u.id_upp = c.id_upp
+        INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
+        LEFT JOIN cat_prueba_diagnostico pr ON pr.id_prueba = r.id_prueba
+        LEFT JOIN usuarios usr_cap ON usr_cap.id_usuario = r.id_usuario_captura
+        LEFT JOIN usuarios usr_val ON usr_val.id_usuario = r.id_usuario_valida
         WHERE 1=1
     """
     params = {"limit": int(limit)}
@@ -93,26 +122,63 @@ def consultar_resultados(
         sql += " AND c.numero_caso LIKE :numero_caso"
         params["numero_caso"] = f"%{numero_caso.strip()}%"
 
-    if prueba_realizada:
-        sql += " AND r.prueba_realizada LIKE :prueba_realizada"
-        params["prueba_realizada"] = f"%{prueba_realizada.strip()}%"
+    if id_prueba:
+        sql += " AND r.id_prueba = :id_prueba"
+        params["id_prueba"] = id_prueba
 
     if resultado:
-        sql += " AND r.resultado LIKE :resultado"
-        params["resultado"] = f"%{resultado.strip()}%"
+        sql += " AND r.resultado = :resultado"
+        params["resultado"] = resultado.strip().upper()
+
+    if estatus:
+        sql += " AND r.estatus = :estatus"
+        params["estatus"] = estatus.strip().upper()
 
     if fecha_desde:
-        sql += " AND r.fecha_analisis >= :fecha_desde"
+        sql += " AND r.fecha_resultado >= :fecha_desde"
         params["fecha_desde"] = fecha_desde
 
     if fecha_hasta:
-        sql += " AND r.fecha_analisis <= :fecha_hasta"
+        sql += " AND r.fecha_resultado <= :fecha_hasta"
         params["fecha_hasta"] = fecha_hasta
 
     sql += " ORDER BY r.id_resultado DESC LIMIT :limit"
 
     rows = db.execute(text(sql), params).mappings().all()
-    return [dict(r) for r in rows]
+
+    # Mapear campos reales de BD a campos esperados por frontend
+    resultados = []
+    for row in rows:
+        resultado_data = {
+            "id_resultado": row["id_resultado"],
+            "id_muestra": row["id_muestra"],
+            "codigo_muestra": row["codigo_muestra"],
+            "id_prueba": row["id_prueba"],
+            "prueba_nombre": row["prueba_nombre"],
+            "prueba_realizada": row["prueba_nombre"],  # Mapear para frontend
+            "resultado": row["resultado"],
+            "valor": row["valor"],
+            "observaciones": row["observaciones"],
+            "estatus": row["estatus"],
+            "fecha_resultado": row["fecha_resultado"],
+            "fecha_analisis": row["fecha_resultado"],  # Mapear para frontend
+            "id_usuario_captura": row["id_usuario_captura"],
+            "id_usuario_valida": row["id_usuario_valida"],
+            "id_usuario_responsable": row["id_usuario_captura"],  # Mapear para frontend
+            "usuario_captura": row["usuario_captura"],
+            "usuario_valida": row["usuario_valida"],
+            "usuario_responsable": row["usuario_captura"],  # Mapear para frontend
+            "fecha_validacion": row["fecha_validacion"],
+            "created_at": row["created_at"],
+            "tipo_muestra": row["tipo_muestra"],
+            "id_caso": row["id_caso"],
+            "numero_caso": row["numero_caso"],
+            "clave_upp": row["clave_upp"],
+            "propietario": row["propietario"]
+        }
+        resultados.append(resultado_data)
+
+    return resultados
 
 
 # ==================== EMPIEZAN CAMBIOS ====================

@@ -71,24 +71,19 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         # Hash de la contraseña ingresada
         password_hash = hash_password(password)
 
-        # Buscar usuario en la base de datos
+        # Buscar usuario en la base de datos con JOIN a cat_rol
         sql = text("""
             SELECT
                 u.id_usuario,
+                u.usuario,
                 u.nombre,
-                u.apellido_paterno,
-                u.apellido_materno,
-                u.nombre_usuario,
-                u.correo,
-                u.tipo_usuario,
+                u.id_rol,
                 u.activo,
-                u.vigencia_inicio,
-                u.vigencia_fin,
-                u.clave_de_rumiantes,
-                t.nombre_tipo
+                r.clave as rol_clave,
+                r.descripcion as rol_descripcion
             FROM usuarios u
-            LEFT JOIN tipos_usuario t ON t.id_tipo = u.tipo_usuario
-            WHERE u.nombre_usuario = :usuario
+            INNER JOIN cat_rol r ON r.id_rol = u.id_rol
+            WHERE u.usuario = :usuario
             AND u.password_hash = :password_hash
             LIMIT 1
         """)
@@ -113,50 +108,21 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                 detail="El usuario está inactivo"
             )
 
-        # Validar vigencia
-        hoy = datetime.now().date()
-        vigencia_inicio = usuario_data.get("vigencia_inicio")
-        vigencia_fin = usuario_data.get("vigencia_fin")
-
-        if vigencia_inicio and hoy < vigencia_inicio:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="El usuario aún no está vigente"
-            )
-
-        if vigencia_fin and hoy > vigencia_fin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="La vigencia del usuario ha expirado"
-            )
-
         # Generar token de sesión
         token = generar_token()
 
-        # Mapear tipo_usuario a rol del frontend
-        tipo_usuario_map = {
-            1: "administrador",
-            2: "responsableLaboratorio",
-            3: "recepcionista",
-            4: "coordinador",
-            5: "mvzAutorizado"
-        }
-
-        rol = tipo_usuario_map.get(usuario_data.get("tipo_usuario"), "")
+        # Obtener rol del usuario
+        rol = usuario_data.get("rol_clave", "")
 
         # Preparar respuesta
         usuario_response = {
             "id_usuario": usuario_data["id_usuario"],
             "nombre": usuario_data["nombre"],
-            "apellido_paterno": usuario_data["apellido_paterno"],
-            "apellido_materno": usuario_data.get("apellido_materno", ""),
-            "nombre_completo": f"{usuario_data['nombre']} {usuario_data['apellido_paterno']} {usuario_data.get('apellido_materno', '')}".strip(),
-            "nombre_usuario": usuario_data["nombre_usuario"],
-            "correo": usuario_data["correo"],
-            "tipo_usuario": usuario_data["tipo_usuario"],
-            "nombre_tipo": usuario_data.get("nombre_tipo", ""),
+            "nombre_completo": usuario_data["nombre"],
+            "nombre_usuario": usuario_data["usuario"],
+            "id_rol": usuario_data["id_rol"],
             "rol": rol,
-            "clave_de_rumiantes": usuario_data.get("clave_de_rumiantes", "")
+            "rol_descripcion": usuario_data.get("rol_descripcion", "")
         }
 
         return LoginResponse(
