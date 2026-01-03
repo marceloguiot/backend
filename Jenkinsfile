@@ -2,65 +2,69 @@ pipeline {
     agent any
 
     environment {
-        // Nombre de la imagen y del contenedor
-        DOCKER_IMAGE = "sistpec_backend"
-        DOCKER_CONTAINER = "app-sistpec_backend"
+        // Carpeta para aislar las librerías
+        VENV_NAME = "venv"
+        // Puerto definido por uvicorn standard
         APP_PORT = "8000"
+        // Evita que Jenkins mate el proceso al terminar
+        JENKINS_NODE_COOKIE = "dontKillMe" 
     }
 
     stages {
-        stage('Checkout') {
+        stage('Limpiar Entorno') {
             steps {
-                // Descarga el código del repositorio (GitHub/GitLab)
-                checkout scm
+                // Elimina entorno virtual anterior para asegurar una instalación limpia
+                sh "rm -rf ${VENV_NAME} || true"
             }
         }
 
-        stage('Build Image') {
+        stage('Instalar Dependencias') {
             steps {
                 script {
-                    echo '--- Construyendo Imagen Docker ---'
-                    // Construye la imagen usando el Dockerfile del paso anterior
-                    sh "docker build -t ${DOCKER_IMAGE}:latest ."
+                    echo '--- Creando Virtual Environment ---'
+                    // Crea el entorno virtual con Python 3
+                    sh "python3 -m venv ${VENV_NAME}"
+                    
+                    echo '--- Instalando Librerías ---'
+                    // Instala lo que tienes en requirements.txt (FastAPI, SQLAlchemy, etc.)
+                    sh """
+                        . ${VENV_NAME}/bin/activate
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
+                    """
                 }
             }
         }
 
-        stage('Deploy / Run') {
+        stage('Desplegar API') {
             steps {
                 script {
-                    echo '--- Desplegando Contenedor ---'
-                    // 1. Detener y borrar contenedor anterior si existe (para actualizar)
-                    // El "|| true" evita que falle el pipeline si el contenedor no existía antes
-                    sh "docker stop ${DOCKER_CONTAINER} || true"
-                    sh "docker rm ${DOCKER_CONTAINER} || true"
+                    echo '--- Levantando FastAPI ---'
+                    
+                    // 1. Matar proceso anterior si existe (para liberar el puerto 8000)
+                    // Si falla fuser, intenta con pkill
+                    sh "fuser -k ${APP_PORT}/tcp || true"
+                    
+                    // Pausa de seguridad
+                    sleep 2
 
-                    // 2. Correr el nuevo contenedor
-                    // -d: detached (segundo plano)
-                    // -p: mapeo de puertos (Host:Contenedor)
-                    // --name: nombre para identificarlo
+                    // 2. Ejecutar Uvicorn en segundo plano (nohup)
+                    // Usamos uvicorn main:app como indica tu standard
                     sh """
-                        docker run -d \
-                        -p ${APP_PORT}:8000 \
-                        --name ${DOCKER_CONTAINER} \
-                        --restart always \
-                        ${DOCKER_IMAGE}:latest
+                        . ${VENV_NAME}/bin/activate
+                        nohup uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} > salida.log 2>&1 &
                     """
                 }
             }
         }
     }
-    
+
     post {
-        always {
-            // Limpieza opcional de imágenes "dangling" (sin etiqueta) para ahorrar espacio
-            sh "docker image prune -f"
-        }
         success {
-            echo '¡Despliegue Exitoso!'
+            echo "¡Éxito! Tu API está corriendo (probablemente en http://IP-DEL-SERVIDOR:8000)"
         }
         failure {
-            echo 'El despliegue falló.'
+            echo "Falló el despliegue. Revisa los logs."
         }
     }
 }
