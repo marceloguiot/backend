@@ -1,11 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'docker:latest'
-            // Esto es vital: "presta" el motor de Docker del servidor al contenedor
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
+    agent any
 
     environment {
         // Nombre de la imagen y del contenedor
