@@ -52,7 +52,7 @@ pipeline {
                     // Usamos uvicorn main:app como indica tu standard
                     sh """
                         . ${VENV_NAME}/bin/activate
-                        nohup uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} > salida.log 2>&1 &
+                        nohup uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT} > salida.log 2>&1 &
                     """
                 }
             }
