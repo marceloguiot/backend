@@ -37,7 +37,7 @@ app.include_router(resultados_router)
 # CORS para Vue (Vite)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["https://dictamenes-five.vercel.app/"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
