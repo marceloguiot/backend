@@ -2,36 +2,23 @@ pipeline {
     agent any
 
     environment {
-        // Carpeta para aislar las librerías
-        VENV_NAME = "venv"
-        // Puerto definido por uvicorn standard
         APP_PORT = "8000"
-        // Evita que Jenkins mate el proceso al terminar
-        JENKINS_NODE_COOKIE = "dontKillMe" 
+        JENKINS_NODE_COOKIE = "dontKillMe"
+        // Agregamos la ruta local de binarios al PATH para que encuentre 'uvicorn'
+        PATH = "${HOME}/.local/bin:${PATH}"
     }
 
     stages {
-        stage('Limpiar Entorno') {
-            steps {
-                // Elimina entorno virtual anterior para asegurar una instalación limpia
-                sh "rm -rf ${VENV_NAME} || true"
-            }
-        }
-
-        stage('Instalar Dependencias') {
+        stage('Instalar Dependencias (Modo Usuario)') {
             steps {
                 script {
-                    echo '--- Creando Virtual Environment ---'
-                    // Crea el entorno virtual con Python 3
-                    sh "python3 -m venv ${VENV_NAME}"
+                    echo '--- Instalando librerías en ~/.local ---'
                     
-                    echo '--- Instalando Librerías ---'
-                    // Instala lo que tienes en requirements.txt (FastAPI, SQLAlchemy, etc.)
-                    sh """
-                        . ${VENV_NAME}/bin/activate
-                        pip install --upgrade pip
-                        pip install -r requirements.txt
-                    """
+                    // 1. Instalar dependencias a nivel de usuario
+                    // --user: Instala en el home del usuario (no requiere root)
+                    // --break-system-packages: Necesario en Python 3.11+ en Debian/Ubuntu modernos
+                    // para permitir instalar sin entorno virtual.
+                    sh "pip install --user -r requirements.txt --break-system-packages || pip install --user -r requirements.txt"
                 }
             }
         }
@@ -41,18 +28,15 @@ pipeline {
                 script {
                     echo '--- Levantando FastAPI ---'
                     
-                    // 1. Matar proceso anterior si existe (para liberar el puerto 8000)
-                    // Si falla fuser, intenta con pkill
+                    // 1. Matar proceso anterior
                     sh "fuser -k ${APP_PORT}/tcp || true"
-                    
-                    // Pausa de seguridad
                     sleep 2
 
-                    // 2. Ejecutar Uvicorn en segundo plano (nohup)
-                    // Usamos uvicorn main:app como indica tu standard
+                    // 2. Ejecutar Uvicorn
+                    // Usamos "python3 -m uvicorn" que es más robusto para encontrar el módulo
+                    // si el PATH a veces falla.
                     sh """
-                        . ${VENV_NAME}/bin/activate
-                        nohup uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT} > salida.log 2>&1 &
+                        nohup python3 -m uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT} > salida.log 2>&1 &
                     """
                 }
             }
@@ -61,7 +45,7 @@ pipeline {
 
     post {
         success {
-            echo "¡Éxito! Tu API está corriendo (probablemente en http://IP-DEL-SERVIDOR:8000)"
+            echo "¡Despliegue exitoso (Modo Usuario)! API en puerto ${APP_PORT}"
         }
         failure {
             echo "Falló el despliegue. Revisa los logs."
