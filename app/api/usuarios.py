@@ -26,7 +26,7 @@ class UsuarioCreate(BaseModel):
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
     nombre_usuario: str
-    correo: Optional[str] = None
+    email: Optional[str] = None
     password: str
     tipo_usuario: int  # id_rol en la BD real
     clave_de_rumiantes: Optional[str] = None
@@ -41,7 +41,7 @@ class UsuarioUpdate(BaseModel):
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
     nombre_usuario: Optional[str] = None
-    correo: Optional[str] = None
+    email: Optional[str] = None
     password: Optional[str] = None
     tipo_usuario: Optional[int] = None  # id_rol en la BD real
     clave_de_rumiantes: Optional[str] = None
@@ -64,7 +64,7 @@ def consultar_usuarios(
     # Parámetros con nombres del frontend (estructura antigua)
     nombre_usuario: Optional[str] = None,
     clave_de_rumiantes: Optional[str] = None,
-    correo: Optional[str] = None,
+    email: Optional[str] = None,
     # Parámetros adicionales
     nombre: Optional[str] = None,
     activo: Optional[bool] = None,
@@ -81,6 +81,7 @@ def consultar_usuarios(
             u.nombre,
             u.id_rol,
             u.activo,
+            u.email,
             u.fecha_creacion,
             r.clave as rol_clave,
             r.descripcion as rol_descripcion
@@ -123,7 +124,7 @@ def consultar_usuarios(
             "apellido_materno": "",  # No existe en BD real
             "nombre_completo": row["nombre"],
             "nombre_usuario": row["usuario"],  # Mapear usuario -> nombre_usuario
-            "correo": "",  # No existe en BD real
+            "email": "",  # No existe en BD real
             "tipo_usuario": row["id_rol"],  # Mapear id_rol -> tipo_usuario
             "clave_de_rumiantes": "",  # No existe en BD real
             "vigencia_inicio": "",  # No existe en BD real
@@ -154,6 +155,7 @@ def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
             u.nombre,
             u.id_rol,
             u.activo,
+            u.email,
             u.fecha_creacion,
             r.clave as rol_clave,
             r.descripcion as rol_descripcion
@@ -175,7 +177,7 @@ def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
         "apellido_materno": "",
         "nombre_completo": row["nombre"],
         "nombre_usuario": row["usuario"],
-        "correo": "",
+        "email": row["email"],
         "tipo_usuario": row["id_rol"],
         "clave_de_rumiantes": "",
         "vigencia_inicio": "",
