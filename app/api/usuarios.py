@@ -124,7 +124,7 @@ def consultar_usuarios(
             "apellido_materno": "",  # No existe en BD real
             "nombre_completo": row["nombre"],
             "nombre_usuario": row["usuario"],  # Mapear usuario -> nombre_usuario
-            "email": "",  # No existe en BD real
+            "email": row["email"],  # No existe en BD real
             "tipo_usuario": row["id_rol"],  # Mapear id_rol -> tipo_usuario
             "clave_de_rumiantes": "",  # No existe en BD real
             "vigencia_inicio": "",  # No existe en BD real
