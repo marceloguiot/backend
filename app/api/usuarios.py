@@ -1,8 +1,3 @@
-# ==================== EMPIEZAN CAMBIOS ====================
-# Archivo nuevo: CRUD completo de usuarios
-# Creado para manejar todas las operaciones de usuarios
-# ==================== EMPIEZAN CAMBIOS ====================
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -15,20 +10,14 @@ from app.db.database import get_db
 
 router = APIRouter(prefix="/api/usuarios", tags=["usuarios"])
 
-
-# ==================== EMPIEZAN CAMBIOS ====================
-# Modelos Pydantic para usuarios
-# ==================== EMPIEZAN CAMBIOS ====================
-
 class UsuarioCreate(BaseModel):
-    # Campos que vienen del frontend (estructura antigua)
     nombre: str
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
     nombre_usuario: str
     email: Optional[str] = None
     password: str
-    tipo_usuario: int  # id_rol en la BD real
+    tipo_usuario: int
     clave_de_rumiantes: Optional[str] = None
     vigencia_inicio: Optional[str] = None
     vigencia_fin: Optional[str] = None
@@ -36,14 +25,13 @@ class UsuarioCreate(BaseModel):
 
 
 class UsuarioUpdate(BaseModel):
-    # Campos que vienen del frontend (estructura antigua)
     nombre: Optional[str] = None
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
     nombre_usuario: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
-    tipo_usuario: Optional[int] = None  # id_rol en la BD real
+    tipo_usuario: Optional[int] = None
     clave_de_rumiantes: Optional[str] = None
     vigencia_inicio: Optional[str] = None
     vigencia_fin: Optional[str] = None
@@ -55,17 +43,11 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-# ==================== EMPIEZAN CAMBIOS ====================
-# Endpoint: Consultar usuarios con filtros
-# ==================== EMPIEZAN CAMBIOS ====================
-
 @router.get("")
 def consultar_usuarios(
-    # Parámetros con nombres del frontend (estructura antigua)
     nombre_usuario: Optional[str] = None,
     clave_de_rumiantes: Optional[str] = None,
     email: Optional[str] = None,
-    # Parámetros adicionales
     nombre: Optional[str] = None,
     activo: Optional[bool] = None,
     limit: int = Query(100, ge=1, le=500),
@@ -138,10 +120,6 @@ def consultar_usuarios(
 
     return usuarios
 
-
-# ==================== EMPIEZAN CAMBIOS ====================
-# Endpoint: Obtener usuario por ID
-# ==================== EMPIEZAN CAMBIOS ====================
 
 @router.get("/{id_usuario}")
 def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
