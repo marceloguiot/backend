@@ -9,6 +9,7 @@ from app.api.auth import router as auth_router
 from app.api.usuarios import router as usuarios_router
 from app.api.muestras import router as muestras_router
 from app.api.resultados import router as resultados_router
+from app.api.hoja_reporte import router as hoja_reporte_router
 
 
 
@@ -22,6 +23,7 @@ app.include_router(upp_router)
 app.include_router(propietarios_router)
 app.include_router(muestras_router)
 app.include_router(resultados_router)
+app.include_router(hoja_reporte_router)
 
 
 # CORS
