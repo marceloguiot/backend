@@ -16,43 +16,35 @@ router = APIRouter(prefix="/api/propietarios", tags=["propietarios"])
 # ==================== EMPIEZAN CAMBIOS ====================
 
 class PropietarioCreate(BaseModel):
-    # Campos que existen en la BD real
+    # BD: id_propietario, nombre, curp, rfc, telefono, email, estatus (ENUM: ACTIVO/FINADO), fecha_registro, fecha_actualizacion
     nombre: str
     curp: Optional[str] = None
     rfc: Optional[str] = None
     telefono: Optional[str] = None
+    email: Optional[str] = None
     estatus: str = "ACTIVO"  # ACTIVO o FINADO
 
     # Campos del frontend que no existen en BD (se ignoran o mapean)
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
-    correo: Optional[EmailStr] = None
-    calle: Optional[str] = None
-    municipio: Optional[str] = None
-    localidad: Optional[str] = None
-    cp: Optional[str] = None
-    estado: Optional[str] = None
-    activo: Optional[bool] = None
+    correo: Optional[EmailStr] = None  # Alias para email
+    activo: Optional[bool] = None  # Mapea a estatus
 
 
 class PropietarioUpdate(BaseModel):
-    # Campos que existen en la BD real
+    # BD: id_propietario, nombre, curp, rfc, telefono, email, estatus (ENUM: ACTIVO/FINADO), fecha_registro, fecha_actualizacion
     nombre: Optional[str] = None
     curp: Optional[str] = None
     rfc: Optional[str] = None
     telefono: Optional[str] = None
+    email: Optional[str] = None
     estatus: Optional[str] = None
 
     # Campos del frontend que no existen en BD (se ignoran o mapean)
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
-    correo: Optional[EmailStr] = None
-    calle: Optional[str] = None
-    municipio: Optional[str] = None
-    localidad: Optional[str] = None
-    cp: Optional[str] = None
-    estado: Optional[str] = None
-    activo: Optional[bool] = None
+    correo: Optional[EmailStr] = None  # Alias para email
+    activo: Optional[bool] = None  # Mapea a estatus
 
 # ==================== TERMINAN CAMBIOS ====================
 
@@ -64,6 +56,7 @@ def propietario_por_curp(curp: str, db: Session = Depends(get_db)):
     if not curp:
         raise HTTPException(status_code=400, detail="CURP requerida")
 
+    # BD: id_propietario, nombre, curp, rfc, telefono, email, estatus (ENUM: ACTIVO/FINADO), fecha_registro, fecha_actualizacion
     q = text("""
         SELECT
             id_propietario,
@@ -71,6 +64,7 @@ def propietario_por_curp(curp: str, db: Session = Depends(get_db)):
             curp,
             rfc,
             telefono,
+            email,
             estatus,
             fecha_registro
         FROM propietarios
@@ -92,12 +86,8 @@ def propietario_por_curp(curp: str, db: Session = Depends(get_db)):
         "curp": row["curp"],
         "rfc": row["rfc"],
         "telefono": row["telefono"],
-        "correo": "",  # No existe en BD real
-        "calle": "",  # No existe en BD real
-        "municipio": "",  # No existe en BD real
-        "localidad": "",  # No existe en BD real
-        "cp": "",  # No existe en BD real
-        "estado": "",  # No existe en BD real
+        "email": row["email"],
+        "correo": row["email"],  # Alias para frontend
         "estatus": row["estatus"],
         "activo": row["estatus"] == "ACTIVO",  # Mapear estatus -> activo
         "fecha_registro": row["fecha_registro"]
@@ -125,7 +115,7 @@ def consultar_propietarios(
 ):
     """
     Consulta propietarios con filtros opcionales
-    Usa la estructura real de la BD: nombre, curp, rfc, telefono, estatus
+    BD: id_propietario, nombre, curp, rfc, telefono, email, estatus (ENUM: ACTIVO/FINADO), fecha_registro, fecha_actualizacion
     """
     sql = """
         SELECT DISTINCT
@@ -134,6 +124,7 @@ def consultar_propietarios(
             p.curp,
             p.rfc,
             p.telefono,
+            p.email,
             p.estatus,
             p.fecha_registro
         FROM propietarios p
@@ -181,12 +172,8 @@ def consultar_propietarios(
             "curp": row["curp"],
             "rfc": row["rfc"],
             "telefono": row["telefono"],
-            "correo": "",  # No existe en BD real
-            "calle": "",  # No existe en BD real
-            "municipio": "",  # No existe en BD real
-            "localidad": "",  # No existe en BD real
-            "cp": "",  # No existe en BD real
-            "estado": "",  # No existe en BD real
+            "email": row["email"],
+            "correo": row["email"],  # Alias para frontend
             "estatus": row["estatus"],
             "activo": row["estatus"] == "ACTIVO",  # Mapear estatus -> activo
             "fecha_registro": row["fecha_registro"]
@@ -204,22 +191,18 @@ def consultar_propietarios(
 def obtener_propietario(id_propietario: int, db: Session = Depends(get_db)):
     """
     Obtiene un propietario específico por ID
+    BD: id_propietario, nombre, curp, rfc, telefono, email, estatus (ENUM: ACTIVO/FINADO), fecha_registro, fecha_actualizacion
     """
     sql = text("""
         SELECT
             id_propietario,
             nombre,
-            apellido_paterno,
-            apellido_materno,
             curp,
+            rfc,
             telefono,
-            correo,
-            calle,
-            municipio,
-            localidad,
-            cp,
-            estado,
-            activo
+            email,
+            estatus,
+            fecha_registro
         FROM propietarios
         WHERE id_propietario = :id_propietario
     """)
@@ -229,10 +212,23 @@ def obtener_propietario(id_propietario: int, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="Propietario no encontrado")
 
-    propietario = dict(row)
-    propietario["nombre_completo"] = f"{propietario['nombre']} {propietario['apellido_paterno']} {propietario.get('apellido_materno', '')}".strip()
+    propietario_data = {
+        "id_propietario": row["id_propietario"],
+        "nombre": row["nombre"],
+        "apellido_paterno": "",  # No existe en BD
+        "apellido_materno": "",  # No existe en BD
+        "nombre_completo": row["nombre"],
+        "curp": row["curp"],
+        "rfc": row["rfc"],
+        "telefono": row["telefono"],
+        "email": row["email"],
+        "correo": row["email"],  # Alias
+        "estatus": row["estatus"],
+        "activo": row["estatus"] == "ACTIVO",
+        "fecha_registro": row["fecha_registro"]
+    }
 
-    return propietario
+    return propietario_data
 
 
 # ==================== EMPIEZAN CAMBIOS ====================
@@ -243,65 +239,66 @@ def obtener_propietario(id_propietario: int, db: Session = Depends(get_db)):
 def crear_propietario(payload: PropietarioCreate, db: Session = Depends(get_db)):
     """
     Crea un nuevo propietario en el sistema
+    BD: id_propietario, nombre, curp, rfc, telefono, email, estatus (ENUM: ACTIVO/FINADO), fecha_registro, fecha_actualizacion
     """
     try:
-        # Validar que el CURP no exista
-        check_sql = text("""
-            SELECT id_propietario FROM propietarios
-            WHERE curp = :curp
-        """)
-        existe = db.execute(check_sql, {"curp": payload.curp.upper()}).first()
+        # Validar que el CURP no exista (si se proporciona)
+        if payload.curp:
+            check_sql = text("""
+                SELECT id_propietario FROM propietarios
+                WHERE curp = :curp
+            """)
+            existe = db.execute(check_sql, {"curp": payload.curp.upper()}).first()
 
-        if existe:
-            raise HTTPException(
-                status_code=400,
-                detail="Ya existe un propietario con ese CURP"
-            )
+            if existe:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ya existe un propietario con ese CURP"
+                )
 
-        # Insertar propietario
+        # Construir nombre completo si vienen apellidos del frontend
+        nombre_completo = payload.nombre
+        if payload.apellido_paterno:
+            nombre_completo = f"{payload.nombre} {payload.apellido_paterno}"
+            if payload.apellido_materno:
+                nombre_completo = f"{nombre_completo} {payload.apellido_materno}"
+
+        # Determinar email (puede venir como email o correo del frontend)
+        email_value = payload.email or (str(payload.correo) if payload.correo else None)
+
+        # Determinar estatus
+        estatus_value = payload.estatus
+        if payload.activo is not None:
+            estatus_value = "ACTIVO" if payload.activo else "FINADO"
+
+        # Insertar propietario con campos reales de BD
         insert_sql = text("""
             INSERT INTO propietarios (
                 nombre,
-                apellido_paterno,
-                apellido_materno,
                 curp,
+                rfc,
                 telefono,
-                correo,
-                calle,
-                municipio,
-                localidad,
-                cp,
-                estado,
-                activo
+                email,
+                estatus,
+                fecha_registro
             ) VALUES (
                 :nombre,
-                :apellido_paterno,
-                :apellido_materno,
                 :curp,
+                :rfc,
                 :telefono,
-                :correo,
-                :calle,
-                :municipio,
-                :localidad,
-                :cp,
-                :estado,
-                :activo
+                :email,
+                :estatus,
+                NOW()
             )
         """)
 
         db.execute(insert_sql, {
-            "nombre": payload.nombre,
-            "apellido_paterno": payload.apellido_paterno,
-            "apellido_materno": payload.apellido_materno,
-            "curp": payload.curp.upper(),
+            "nombre": nombre_completo,
+            "curp": payload.curp.upper() if payload.curp else None,
+            "rfc": payload.rfc.upper() if payload.rfc else None,
             "telefono": payload.telefono,
-            "correo": payload.correo,
-            "calle": payload.calle,
-            "municipio": payload.municipio,
-            "localidad": payload.localidad,
-            "cp": payload.cp,
-            "estado": payload.estado,
-            "activo": 1 if payload.activo else 0
+            "email": email_value,
+            "estatus": estatus_value.upper()
         })
 
         # Obtener ID del propietario creado
@@ -331,6 +328,7 @@ def crear_propietario(payload: PropietarioCreate, db: Session = Depends(get_db))
 def actualizar_propietario(id_propietario: int, payload: PropietarioUpdate, db: Session = Depends(get_db)):
     """
     Actualiza los datos de un propietario existente
+    BD: id_propietario, nombre, curp, rfc, telefono, email, estatus (ENUM: ACTIVO/FINADO), fecha_registro, fecha_actualizacion
     """
     try:
         # Verificar que el propietario existe
@@ -340,21 +338,20 @@ def actualizar_propietario(id_propietario: int, payload: PropietarioUpdate, db: 
         if not existe:
             raise HTTPException(status_code=404, detail="Propietario no encontrado")
 
-        # Construir UPDATE dinámicamente
+        # Construir UPDATE dinámicamente solo con campos reales de BD
         campos = []
         params = {"id_propietario": id_propietario}
 
-        if payload.nombre is not None:
-            campos.append("nombre = :nombre")
-            params["nombre"] = payload.nombre
-
-        if payload.apellido_paterno is not None:
-            campos.append("apellido_paterno = :apellido_paterno")
-            params["apellido_paterno"] = payload.apellido_paterno
-
-        if payload.apellido_materno is not None:
-            campos.append("apellido_materno = :apellido_materno")
-            params["apellido_materno"] = payload.apellido_materno
+        # Si vienen nombre y apellidos del frontend, combinarlos
+        if payload.nombre is not None or payload.apellido_paterno is not None or payload.apellido_materno is not None:
+            nombre_completo = payload.nombre or ""
+            if payload.apellido_paterno:
+                nombre_completo = f"{nombre_completo} {payload.apellido_paterno}".strip()
+            if payload.apellido_materno:
+                nombre_completo = f"{nombre_completo} {payload.apellido_materno}".strip()
+            if nombre_completo:
+                campos.append("nombre = :nombre")
+                params["nombre"] = nombre_completo
 
         if payload.curp is not None:
             # Verificar que no exista otro propietario con ese CURP
@@ -373,40 +370,35 @@ def actualizar_propietario(id_propietario: int, payload: PropietarioUpdate, db: 
             campos.append("curp = :curp")
             params["curp"] = payload.curp.upper()
 
+        if payload.rfc is not None:
+            campos.append("rfc = :rfc")
+            params["rfc"] = payload.rfc.upper()
+
         if payload.telefono is not None:
             campos.append("telefono = :telefono")
             params["telefono"] = payload.telefono
 
-        if payload.correo is not None:
-            campos.append("correo = :correo")
-            params["correo"] = payload.correo
+        # Email puede venir como email o correo del frontend
+        if payload.email is not None:
+            campos.append("email = :email")
+            params["email"] = payload.email
+        elif payload.correo is not None:
+            campos.append("email = :email")
+            params["email"] = str(payload.correo)
 
-        if payload.calle is not None:
-            campos.append("calle = :calle")
-            params["calle"] = payload.calle
-
-        if payload.municipio is not None:
-            campos.append("municipio = :municipio")
-            params["municipio"] = payload.municipio
-
-        if payload.localidad is not None:
-            campos.append("localidad = :localidad")
-            params["localidad"] = payload.localidad
-
-        if payload.cp is not None:
-            campos.append("cp = :cp")
-            params["cp"] = payload.cp
-
-        if payload.estado is not None:
-            campos.append("estado = :estado")
-            params["estado"] = payload.estado
-
-        if payload.activo is not None:
-            campos.append("activo = :activo")
-            params["activo"] = 1 if payload.activo else 0
+        # Estatus puede venir como estatus o activo del frontend
+        if payload.estatus is not None:
+            campos.append("estatus = :estatus")
+            params["estatus"] = payload.estatus.upper()
+        elif payload.activo is not None:
+            campos.append("estatus = :estatus")
+            params["estatus"] = "ACTIVO" if payload.activo else "FINADO"
 
         if not campos:
             raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+
+        # Agregar fecha_actualizacion
+        campos.append("fecha_actualizacion = NOW()")
 
         # Ejecutar UPDATE
         update_sql = f"""
@@ -438,12 +430,13 @@ def actualizar_propietario(id_propietario: int, payload: PropietarioUpdate, db: 
 @router.patch("/{id_propietario}/desactivar")
 def desactivar_propietario(id_propietario: int, db: Session = Depends(get_db)):
     """
-    Desactiva un propietario (baja lógica)
+    Desactiva un propietario (cambia estatus a FINADO)
+    BD usa estatus ENUM: ACTIVO/FINADO
     """
     try:
         sql = text("""
             UPDATE propietarios
-            SET activo = 0
+            SET estatus = 'FINADO', fecha_actualizacion = NOW()
             WHERE id_propietario = :id_propietario
         """)
 
@@ -474,11 +467,12 @@ def desactivar_propietario(id_propietario: int, db: Session = Depends(get_db)):
 def reactivar_propietario(id_propietario: int, db: Session = Depends(get_db)):
     """
     Reactiva un propietario previamente desactivado
+    BD usa estatus ENUM: ACTIVO/FINADO
     """
     try:
         sql = text("""
             UPDATE propietarios
-            SET activo = 1
+            SET estatus = 'ACTIVO', fecha_actualizacion = NOW()
             WHERE id_propietario = :id_propietario
         """)
 

@@ -18,39 +18,31 @@ router = APIRouter(prefix="/api/upp", tags=["upp"])
 # ==================== EMPIEZAN CAMBIOS ====================
 
 class UppCreate(BaseModel):
-    # Campos que existen en la BD real
+    # BD: id_upp, clave_upp, id_propietario, id_municipio, localidad, direccion, telefono_contacto, estatus, fecha_registro
     clave_upp: str
     id_propietario: int
-    municipio: Optional[str] = None
+    id_municipio: Optional[int] = None
     localidad: Optional[str] = None
     direccion: Optional[str] = None
+    telefono_contacto: Optional[str] = None
     estatus: bool = True
 
-    # Campos del frontend que no existen en BD (se ignoran o mapean)
-    nombre_predio: Optional[str] = None
-    calle: Optional[str] = None
-    codigo_postal: Optional[str] = None
-    estado: Optional[str] = None
-    latitud: Optional[float] = None
-    longitud: Optional[float] = None
+    # Campos del frontend que se mapean
+    municipio: Optional[str] = None  # Se puede usar para buscar id_municipio
 
 
 class UppUpdate(BaseModel):
-    # Campos que existen en la BD real
+    # BD: id_upp, clave_upp, id_propietario, id_municipio, localidad, direccion, telefono_contacto, estatus, fecha_registro
     clave_upp: Optional[str] = None
     id_propietario: Optional[int] = None
-    municipio: Optional[str] = None
+    id_municipio: Optional[int] = None
     localidad: Optional[str] = None
     direccion: Optional[str] = None
+    telefono_contacto: Optional[str] = None
     estatus: Optional[bool] = None
 
-    # Campos del frontend que no existen en BD (se ignoran)
-    nombre_predio: Optional[str] = None
-    calle: Optional[str] = None
-    codigo_postal: Optional[str] = None
-    estado: Optional[str] = None
-    latitud: Optional[float] = None
-    longitud: Optional[float] = None
+    # Campos del frontend que se mapean
+    municipio: Optional[str] = None  # Se puede usar para buscar id_municipio
 
 # ==================== TERMINAN CAMBIOS ====================
 
@@ -61,6 +53,9 @@ def upp_por_clave(
     clave: str = Query(..., min_length=1, max_length=25),
     db: Session = Depends(get_db),
 ):
+    """
+    BD: id_upp, clave_upp, id_propietario, id_municipio, localidad, direccion, telefono_contacto, estatus, fecha_registro
+    """
     c = (clave or "").strip().upper()
 
     sql = text("""
@@ -68,14 +63,19 @@ def upp_por_clave(
           u.id_upp,
           u.clave_upp,
           u.id_propietario,
-          u.municipio,
+          u.id_municipio,
           u.localidad,
           u.direccion,
+          u.telefono_contacto,
           u.estatus,
           u.fecha_registro,
-          p.nombre AS propietario
+          p.nombre AS propietario,
+          m.nombre AS municipio_nombre,
+          e.nombre AS estado_nombre
         FROM upp u
         INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
+        LEFT JOIN cat_municipio m ON m.id_municipio = u.id_municipio
+        LEFT JOIN cat_estado e ON e.id_estado = m.id_estado
         WHERE UPPER(u.clave_upp) = :clave
         LIMIT 1
     """)
@@ -90,24 +90,19 @@ def upp_por_clave(
         "clave_upp": row["clave_upp"],
         "id_propietario": row["id_propietario"],
         "propietario": row["propietario"],
-        "municipio": row["municipio"],
+        "id_municipio": row["id_municipio"],
+        "municipio": row["municipio_nombre"],  # Nombre del municipio para frontend
         "localidad": row["localidad"],
         "direccion": row["direccion"],
+        "telefono_contacto": row["telefono_contacto"],
         "estatus": bool(row["estatus"]),
         "fecha_registro": row["fecha_registro"],
-        # Campos que no existen en BD
-        "nombre_predio": "",
-        "calle": row["direccion"],  # Mapear direccion -> calle
-        "codigo_postal": "",
-        "estado": "Veracruz",
-        "latitud": None,
-        "longitud": None
+        "estado": row["estado_nombre"]  # Nombre del estado para frontend
     }
 
     return upp_data
 
 
-# ==================== ENDPOINT ORIGINAL (sin cambios) ====================
 @router.get("")
 def buscar_upp(
     search: str = Query("", max_length=120),
@@ -115,6 +110,9 @@ def buscar_upp(
     solo_activas: bool = Query(True),
     db: Session = Depends(get_db),
 ):
+    """
+    BD: id_upp, clave_upp, id_propietario, id_municipio, localidad, direccion, telefono_contacto, estatus, fecha_registro
+    """
     s = (search or "").strip()
     like = f"%{s}%"
 
@@ -123,14 +121,19 @@ def buscar_upp(
           u.id_upp,
           u.clave_upp,
           u.id_propietario,
-          u.municipio,
+          u.id_municipio,
           u.localidad,
           u.direccion,
+          u.telefono_contacto,
           u.estatus,
           u.fecha_registro,
-          p.nombre AS propietario
+          p.nombre AS propietario,
+          m.nombre AS municipio_nombre,
+          e.nombre AS estado_nombre
         FROM upp u
         INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
+        LEFT JOIN cat_municipio m ON m.id_municipio = u.id_municipio
+        LEFT JOIN cat_estado e ON e.id_estado = m.id_estado
         WHERE
           (:solo_activas = 0 OR u.estatus = 1)
           AND (:s = '' OR u.clave_upp LIKE :like OR p.nombre LIKE :like)
@@ -153,18 +156,14 @@ def buscar_upp(
             "clave_upp": row["clave_upp"],
             "id_propietario": row["id_propietario"],
             "propietario": row["propietario"],
-            "municipio": row["municipio"],
+            "id_municipio": row["id_municipio"],
+            "municipio": row["municipio_nombre"],
             "localidad": row["localidad"],
             "direccion": row["direccion"],
+            "telefono_contacto": row["telefono_contacto"],
             "estatus": bool(row["estatus"]),
             "fecha_registro": row["fecha_registro"],
-            # Campos que no existen en BD
-            "nombre_predio": "",
-            "calle": row["direccion"],
-            "codigo_postal": "",
-            "estado": "Veracruz",
-            "latitud": None,
-            "longitud": None
+            "estado": row["estado_nombre"]
         }
         upps.append(upp_data)
 
@@ -179,26 +178,26 @@ def buscar_upp(
 def obtener_upp(id_upp: int, db: Session = Depends(get_db)):
     """
     Obtiene una UPP específica por ID
+    BD: id_upp, clave_upp, id_propietario, id_municipio, localidad, direccion, telefono_contacto, estatus, fecha_registro
     """
     sql = text("""
         SELECT
             u.id_upp,
             u.clave_upp,
-            u.nombre_predio,
-            u.calle,
-            u.municipio,
-            u.localidad,
-            u.codigo_postal,
-            u.estado,
-            u.latitud,
-            u.longitud,
-            u.estatus,
             u.id_propietario,
-            p.nombre AS propietario_nombre,
-            p.apellido_paterno AS propietario_apellido_paterno,
-            p.apellido_materno AS propietario_apellido_materno
+            u.id_municipio,
+            u.localidad,
+            u.direccion,
+            u.telefono_contacto,
+            u.estatus,
+            u.fecha_registro,
+            p.nombre AS propietario,
+            m.nombre AS municipio_nombre,
+            e.nombre AS estado_nombre
         FROM upp u
-        JOIN propietarios p ON p.id_propietario = u.id_propietario
+        INNER JOIN propietarios p ON p.id_propietario = u.id_propietario
+        LEFT JOIN cat_municipio m ON m.id_municipio = u.id_municipio
+        LEFT JOIN cat_estado e ON e.id_estado = m.id_estado
         WHERE u.id_upp = :id_upp
     """)
 
@@ -207,10 +206,22 @@ def obtener_upp(id_upp: int, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="UPP no encontrada")
 
-    upp = dict(row)
-    upp["propietario"] = f"{upp['propietario_nombre']} {upp['propietario_apellido_paterno']} {upp.get('propietario_apellido_materno', '')}".strip()
+    upp_data = {
+        "id_upp": row["id_upp"],
+        "clave_upp": row["clave_upp"],
+        "id_propietario": row["id_propietario"],
+        "propietario": row["propietario"],
+        "id_municipio": row["id_municipio"],
+        "municipio": row["municipio_nombre"],
+        "localidad": row["localidad"],
+        "direccion": row["direccion"],
+        "telefono_contacto": row["telefono_contacto"],
+        "estatus": bool(row["estatus"]),
+        "fecha_registro": row["fecha_registro"],
+        "estado": row["estado_nombre"]
+    }
 
-    return upp
+    return upp_data
 
 
 # ==================== EMPIEZAN CAMBIOS ====================
@@ -221,6 +232,7 @@ def obtener_upp(id_upp: int, db: Session = Depends(get_db)):
 def crear_upp(payload: UppCreate, db: Session = Depends(get_db)):
     """
     Crea una nueva UPP en el sistema
+    BD: id_upp, clave_upp, id_propietario, id_municipio, localidad, direccion, telefono_contacto, estatus, fecha_registro
     """
     try:
         # Validar que la clave UPP no exista
@@ -249,46 +261,45 @@ def crear_upp(payload: UppCreate, db: Session = Depends(get_db)):
                 detail="El propietario especificado no existe"
             )
 
-        # Insertar UPP
+        # Determinar id_municipio (puede venir directo o buscarse por nombre)
+        id_municipio = payload.id_municipio
+        if not id_municipio and payload.municipio:
+            # Buscar municipio por nombre
+            muni_sql = text("SELECT id_municipio FROM cat_municipio WHERE nombre LIKE :nombre LIMIT 1")
+            muni_row = db.execute(muni_sql, {"nombre": f"%{payload.municipio}%"}).first()
+            if muni_row:
+                id_municipio = muni_row[0]
+
+        # Insertar UPP con campos reales de BD
         insert_sql = text("""
             INSERT INTO upp (
                 clave_upp,
-                nombre_predio,
                 id_propietario,
-                calle,
-                municipio,
+                id_municipio,
                 localidad,
-                codigo_postal,
-                estado,
-                latitud,
-                longitud,
-                estatus
+                direccion,
+                telefono_contacto,
+                estatus,
+                fecha_registro
             ) VALUES (
                 :clave_upp,
-                :nombre_predio,
                 :id_propietario,
-                :calle,
-                :municipio,
+                :id_municipio,
                 :localidad,
-                :codigo_postal,
-                :estado,
-                :latitud,
-                :longitud,
-                :estatus
+                :direccion,
+                :telefono_contacto,
+                :estatus,
+                NOW()
             )
         """)
 
         db.execute(insert_sql, {
             "clave_upp": payload.clave_upp.upper(),
-            "nombre_predio": payload.nombre_predio,
             "id_propietario": payload.id_propietario,
-            "calle": payload.calle,
-            "municipio": payload.municipio,
+            "id_municipio": id_municipio,
             "localidad": payload.localidad,
-            "codigo_postal": payload.codigo_postal,
-            "estado": payload.estado,
-            "latitud": payload.latitud,
-            "longitud": payload.longitud,
+            "direccion": payload.direccion,
+            "telefono_contacto": payload.telefono_contacto,
             "estatus": 1 if payload.estatus else 0
         })
 
@@ -319,6 +330,7 @@ def crear_upp(payload: UppCreate, db: Session = Depends(get_db)):
 def actualizar_upp(id_upp: int, payload: UppUpdate, db: Session = Depends(get_db)):
     """
     Actualiza los datos de una UPP existente
+    BD: id_upp, clave_upp, id_propietario, id_municipio, localidad, direccion, telefono_contacto, estatus, fecha_registro
     """
     try:
         # Verificar que la UPP existe
@@ -328,7 +340,7 @@ def actualizar_upp(id_upp: int, payload: UppUpdate, db: Session = Depends(get_db
         if not existe:
             raise HTTPException(status_code=404, detail="UPP no encontrada")
 
-        # Construir UPDATE dinámicamente
+        # Construir UPDATE dinámicamente solo con campos reales de BD
         campos = []
         params = {"id_upp": id_upp}
 
@@ -349,10 +361,6 @@ def actualizar_upp(id_upp: int, payload: UppUpdate, db: Session = Depends(get_db
             campos.append("clave_upp = :clave_upp")
             params["clave_upp"] = payload.clave_upp.upper()
 
-        if payload.nombre_predio is not None:
-            campos.append("nombre_predio = :nombre_predio")
-            params["nombre_predio"] = payload.nombre_predio
-
         if payload.id_propietario is not None:
             # Verificar que el propietario existe
             check_propietario = text("""
@@ -367,33 +375,29 @@ def actualizar_upp(id_upp: int, payload: UppUpdate, db: Session = Depends(get_db
             campos.append("id_propietario = :id_propietario")
             params["id_propietario"] = payload.id_propietario
 
-        if payload.calle is not None:
-            campos.append("calle = :calle")
-            params["calle"] = payload.calle
-
-        if payload.municipio is not None:
-            campos.append("municipio = :municipio")
-            params["municipio"] = payload.municipio
+        # Determinar id_municipio (puede venir directo o buscarse por nombre)
+        if payload.id_municipio is not None:
+            campos.append("id_municipio = :id_municipio")
+            params["id_municipio"] = payload.id_municipio
+        elif payload.municipio is not None:
+            # Buscar municipio por nombre
+            muni_sql = text("SELECT id_municipio FROM cat_municipio WHERE nombre LIKE :nombre LIMIT 1")
+            muni_row = db.execute(muni_sql, {"nombre": f"%{payload.municipio}%"}).first()
+            if muni_row:
+                campos.append("id_municipio = :id_municipio")
+                params["id_municipio"] = muni_row[0]
 
         if payload.localidad is not None:
             campos.append("localidad = :localidad")
             params["localidad"] = payload.localidad
 
-        if payload.codigo_postal is not None:
-            campos.append("codigo_postal = :codigo_postal")
-            params["codigo_postal"] = payload.codigo_postal
+        if payload.direccion is not None:
+            campos.append("direccion = :direccion")
+            params["direccion"] = payload.direccion
 
-        if payload.estado is not None:
-            campos.append("estado = :estado")
-            params["estado"] = payload.estado
-
-        if payload.latitud is not None:
-            campos.append("latitud = :latitud")
-            params["latitud"] = payload.latitud
-
-        if payload.longitud is not None:
-            campos.append("longitud = :longitud")
-            params["longitud"] = payload.longitud
+        if payload.telefono_contacto is not None:
+            campos.append("telefono_contacto = :telefono_contacto")
+            params["telefono_contacto"] = payload.telefono_contacto
 
         if payload.estatus is not None:
             campos.append("estatus = :estatus")

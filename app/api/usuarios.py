@@ -56,6 +56,7 @@ def consultar_usuarios(
     """
     Consulta usuarios con filtros opcionales
     """
+    # BD: id_usuario, id_rol, nombre, usuario, password_hash, email, telefono, activo, fecha_creacion, fecha_actualizacion
     sql = """
         SELECT
             u.id_usuario,
@@ -64,8 +65,9 @@ def consultar_usuarios(
             u.id_rol,
             u.activo,
             u.email,
+            u.telefono,
             u.fecha_creacion,
-            r.clave as rol_clave,
+            r.nombre as rol_nombre,
             r.descripcion as rol_descripcion
         FROM usuarios u
         INNER JOIN cat_rol r ON r.id_rol = u.id_rol
@@ -106,14 +108,15 @@ def consultar_usuarios(
             "apellido_materno": "",  # No existe en BD real
             "nombre_completo": row["nombre"],
             "nombre_usuario": row["usuario"],  # Mapear usuario -> nombre_usuario
-            "email": row["email"],  # No existe en BD real
+            "email": row["email"],
+            "telefono": row["telefono"],
             "tipo_usuario": row["id_rol"],  # Mapear id_rol -> tipo_usuario
             "clave_de_rumiantes": "",  # No existe en BD real
             "vigencia_inicio": "",  # No existe en BD real
             "vigencia_fin": "",  # No existe en BD real
             "activo": bool(row["activo"]),
             "fecha_creacion": row["fecha_creacion"],
-            "rol_clave": row["rol_clave"],
+            "rol_nombre": row["rol_nombre"],
             "rol_descripcion": row["rol_descripcion"]
         }
         usuarios.append(usuario_data)
@@ -134,8 +137,9 @@ def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
             u.id_rol,
             u.activo,
             u.email,
+            u.telefono,
             u.fecha_creacion,
-            r.clave as rol_clave,
+            r.nombre as rol_nombre,
             r.descripcion as rol_descripcion
         FROM usuarios u
         INNER JOIN cat_rol r ON r.id_rol = u.id_rol
@@ -156,13 +160,14 @@ def obtener_usuario(id_usuario: int, db: Session = Depends(get_db)):
         "nombre_completo": row["nombre"],
         "nombre_usuario": row["usuario"],
         "email": row["email"],
+        "telefono": row["telefono"],
         "tipo_usuario": row["id_rol"],
         "clave_de_rumiantes": "",
         "vigencia_inicio": "",
         "vigencia_fin": "",
         "activo": bool(row["activo"]),
         "fecha_creacion": row["fecha_creacion"],
-        "rol_clave": row["rol_clave"],
+        "rol_nombre": row["rol_nombre"],
         "rol_descripcion": row["rol_descripcion"]
     }
 
@@ -213,12 +218,14 @@ def crear_usuario(payload: UsuarioCreate, db: Session = Depends(get_db)):
         nombre_completo = f"{payload.nombre} {payload.apellido_paterno or ''} {payload.apellido_materno or ''}".strip()
 
         # Insertar usuario usando solo los campos que existen en la BD real
+        # BD: id_usuario, id_rol, nombre, usuario, password_hash, email, telefono, activo, fecha_creacion, fecha_actualizacion
         insert_sql = text("""
             INSERT INTO usuarios (
                 usuario,
                 password_hash,
                 nombre,
                 id_rol,
+                email,
                 activo,
                 fecha_creacion
             ) VALUES (
@@ -226,6 +233,7 @@ def crear_usuario(payload: UsuarioCreate, db: Session = Depends(get_db)):
                 :password_hash,
                 :nombre,
                 :id_rol,
+                :email,
                 :activo,
                 NOW()
             )
@@ -236,6 +244,7 @@ def crear_usuario(payload: UsuarioCreate, db: Session = Depends(get_db)):
             "password_hash": password_hash,
             "nombre": nombre_completo,
             "id_rol": payload.tipo_usuario,
+            "email": payload.email or "",
             "activo": 1 if payload.activo else 0
         })
 
@@ -335,7 +344,12 @@ def actualizar_usuario(id_usuario: int, payload: UsuarioUpdate, db: Session = De
             campos.append("activo = :activo")
             params["activo"] = 1 if payload.activo else 0
 
-        # Nota: correo, clave_de_rumiantes, vigencia_inicio, vigencia_fin no existen en BD real
+        # Email sí existe en la BD
+        if payload.email is not None:
+            campos.append("email = :email")
+            params["email"] = payload.email
+
+        # Nota: clave_de_rumiantes, vigencia_inicio, vigencia_fin no existen en BD real
         # por lo que se ignoran
 
         if not campos:

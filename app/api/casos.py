@@ -12,14 +12,23 @@ router = APIRouter(prefix="/api/casos", tags=["casos"])
 
 
 class CasoCreate(BaseModel):
+    # BD: id_caso, numero_caso, id_upp, id_mvz, id_usuario_recepciona, id_estatus_caso, fecha_recepcion, semana_epidemiologica, anio_epidemiologico, observaciones, created_at, updated_at
     id_upp: int = Field(..., gt=0)
+    id_mvz: Optional[int] = None
+    id_usuario_recepciona: Optional[int] = None
+    id_estatus_caso: Optional[int] = None
     fecha_recepcion: date
+    semana_epidemiologica: Optional[int] = None
+    anio_epidemiologico: Optional[int] = None
     observaciones: str | None = None
-    id_usuario_crea: int = Field(..., gt=0)  
+    id_usuario_crea: int = Field(..., gt=0)  # Se mapea a id_usuario_recepciona si no viene  
 
 
 @router.post("")
 def crear_caso(payload: CasoCreate, db: Session = Depends(get_db)):
+    """
+    BD: id_caso, numero_caso, id_upp, id_mvz, id_usuario_recepciona, id_estatus_caso, fecha_recepcion, semana_epidemiologica, anio_epidemiologico, observaciones, created_at, updated_at
+    """
     try:
         # 1) Generar numero de caso via SP (OUT param)
         db.execute(text("SET @p_numero_caso = ''"))
@@ -29,17 +38,64 @@ def crear_caso(payload: CasoCreate, db: Session = Depends(get_db)):
         if not numero_caso:
             raise HTTPException(status_code=500, detail="No se pudo generar el número de caso.")
 
-        # 2) Insertar caso
+        # Determinar id_estatus_caso (buscar ABIERTO por defecto)
+        id_estatus_caso = payload.id_estatus_caso
+        if not id_estatus_caso:
+            estatus_sql = text("SELECT id_estatus_caso FROM cat_estatus_caso WHERE nombre = 'ABIERTO' LIMIT 1")
+            estatus_row = db.execute(estatus_sql).first()
+            if estatus_row:
+                id_estatus_caso = estatus_row[0]
+
+        # Determinar id_usuario_recepciona
+        id_usuario_recepciona = payload.id_usuario_recepciona or payload.id_usuario_crea
+
+        # Calcular semana y año epidemiológico si no vienen
+        semana_epi = payload.semana_epidemiologica
+        anio_epi = payload.anio_epidemiologico
+        if not semana_epi or not anio_epi:
+            # Calcular basado en fecha_recepcion
+            from datetime import datetime
+            fecha = payload.fecha_recepcion
+            anio_epi = anio_epi or fecha.year
+            # Semana ISO
+            semana_epi = semana_epi or fecha.isocalendar()[1]
+
+        # 2) Insertar caso con campos reales de BD
         insert_sql = text("""
-            INSERT INTO casos (numero_caso, id_upp, fecha_recepcion, estatus, observaciones, id_usuario_crea)
-            VALUES (:numero_caso, :id_upp, :fecha_recepcion, 'ABIERTO', :observaciones, :id_usuario_crea)
+            INSERT INTO casos (
+                numero_caso,
+                id_upp,
+                id_mvz,
+                id_usuario_recepciona,
+                id_estatus_caso,
+                fecha_recepcion,
+                semana_epidemiologica,
+                anio_epidemiologico,
+                observaciones,
+                created_at
+            ) VALUES (
+                :numero_caso,
+                :id_upp,
+                :id_mvz,
+                :id_usuario_recepciona,
+                :id_estatus_caso,
+                :fecha_recepcion,
+                :semana_epidemiologica,
+                :anio_epidemiologico,
+                :observaciones,
+                NOW()
+            )
         """)
         db.execute(insert_sql, {
             "numero_caso": numero_caso,
             "id_upp": payload.id_upp,
+            "id_mvz": payload.id_mvz,
+            "id_usuario_recepciona": id_usuario_recepciona,
+            "id_estatus_caso": id_estatus_caso,
             "fecha_recepcion": payload.fecha_recepcion,
+            "semana_epidemiologica": semana_epi,
+            "anio_epidemiologico": anio_epi,
             "observaciones": payload.observaciones,
-            "id_usuario_crea": payload.id_usuario_crea,
         })
 
         # 3) Obtener id del caso insertado
@@ -50,7 +106,8 @@ def crear_caso(payload: CasoCreate, db: Session = Depends(get_db)):
         return {
             "id_caso": int(new_id),
             "numero_caso": numero_caso,
-            "estatus": "ABIERTO",
+            "id_estatus_caso": id_estatus_caso,
+            "estatus": "ABIERTO",  # Para compatibilidad con frontend
         }
 
     except HTTPException:
@@ -68,29 +125,48 @@ def consultar_casos(
     id_upp: Optional[int] = None,
     clave_upp: Optional[str] = None,
     propietario: Optional[str] = None,
-    estatus: Optional[str] = None,
+    id_estatus_caso: Optional[int] = None,
+    estatus: Optional[str] = None,  # Para compatibilidad con frontend
     fecha_recepcion: Optional[date] = None,
-    folio_hoja_control: Optional[str] = None,
+    id_mvz: Optional[int] = None,
     mvz: Optional[str] = None,
+    semana_epidemiologica: Optional[int] = None,
+    anio_epidemiologico: Optional[int] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
 ):
-    # casos.estatus es ENUM: ABIERTO, EN_PROCESO, CERRADO, CANCELADO
+    """
+    BD: id_caso, numero_caso, id_upp, id_mvz, id_usuario_recepciona, id_estatus_caso, fecha_recepcion, semana_epidemiologica, anio_epidemiologico, observaciones, created_at, updated_at
+    """
     sql = """
         SELECT
           c.id_caso,
           c.numero_caso,
+          c.id_upp,
+          c.id_mvz,
+          c.id_usuario_recepciona,
+          c.id_estatus_caso,
           c.fecha_recepcion,
-          c.estatus,
+          c.semana_epidemiologica,
+          c.anio_epidemiologico,
           c.observaciones,
-          u.id_upp,
+          c.created_at,
+          c.updated_at,
           u.clave_upp,
-          u.municipio,
+          m.nombre AS municipio_nombre,
           u.localidad,
-          p.nombre AS propietario
+          p.nombre AS propietario,
+          ec.nombre AS estatus_caso,
+          mvz_user.nombre AS mvz_nombre,
+          rec_user.nombre AS usuario_recepciona_nombre
         FROM casos c
         JOIN upp u ON u.id_upp = c.id_upp
         JOIN propietarios p ON p.id_propietario = u.id_propietario
+        LEFT JOIN cat_municipio m ON m.id_municipio = u.id_municipio
+        LEFT JOIN cat_estatus_caso ec ON ec.id_estatus_caso = c.id_estatus_caso
+        LEFT JOIN mvz ON mvz.id_mvz = c.id_mvz
+        LEFT JOIN usuarios mvz_user ON mvz_user.id_usuario = c.id_mvz
+        LEFT JOIN usuarios rec_user ON rec_user.id_usuario = c.id_usuario_recepciona
         WHERE 1=1
     """
     params = {"limit": int(limit)}
@@ -111,24 +187,62 @@ def consultar_casos(
         sql += " AND p.nombre LIKE :propietario"
         params["propietario"] = f"%{propietario.strip()}%"
 
-    if estatus:
-        sql += " AND c.estatus = :estatus"
+    if id_estatus_caso:
+        sql += " AND c.id_estatus_caso = :id_estatus_caso"
+        params["id_estatus_caso"] = id_estatus_caso
+    elif estatus:
+        # Buscar por nombre de estatus para compatibilidad
+        sql += " AND ec.nombre = :estatus"
         params["estatus"] = estatus.strip().upper()
 
     if fecha_recepcion:
         sql += " AND c.fecha_recepcion = :fecha_recepcion"
         params["fecha_recepcion"] = fecha_recepcion
 
-    # Dependen de lo que se ingrese como observaciones en el frontend
-    if folio_hoja_control:
-        sql += " AND (c.observaciones LIKE :folio_hcc)"
-        params["folio_hcc"] = f"%{folio_hoja_control.strip()}%"
-
-    if mvz:
-        sql += " AND (c.observaciones LIKE :mvz)"
+    if id_mvz:
+        sql += " AND c.id_mvz = :id_mvz"
+        params["id_mvz"] = id_mvz
+    elif mvz:
+        sql += " AND (mvz.nombre LIKE :mvz OR mvz_user.nombre LIKE :mvz)"
         params["mvz"] = f"%{mvz.strip()}%"
+
+    if semana_epidemiologica:
+        sql += " AND c.semana_epidemiologica = :semana_epidemiologica"
+        params["semana_epidemiologica"] = semana_epidemiologica
+
+    if anio_epidemiologico:
+        sql += " AND c.anio_epidemiologico = :anio_epidemiologico"
+        params["anio_epidemiologico"] = anio_epidemiologico
 
     sql += " ORDER BY c.id_caso DESC LIMIT :limit"
 
     rows = db.execute(text(sql), params).mappings().all()
-    return [dict(r) for r in rows]
+
+    # Mapear a formato esperado por frontend
+    casos = []
+    for row in rows:
+        caso_data = {
+            "id_caso": row["id_caso"],
+            "numero_caso": row["numero_caso"],
+            "id_upp": row["id_upp"],
+            "clave_upp": row["clave_upp"],
+            "id_mvz": row["id_mvz"],
+            "mvz": row["mvz_nombre"],
+            "id_usuario_recepciona": row["id_usuario_recepciona"],
+            "usuario_recepciona": row["usuario_recepciona_nombre"],
+            "id_estatus_caso": row["id_estatus_caso"],
+            "estatus_caso": row["estatus_caso"],
+            "estatus": row["estatus_caso"],  # Alias para frontend
+            "fecha_recepcion": row["fecha_recepcion"],
+            "semana_epidemiologica": row["semana_epidemiologica"],
+            "anio_epidemiologico": row["anio_epidemiologico"],
+            "observaciones": row["observaciones"],
+            "municipio": row["municipio_nombre"],
+            "localidad": row["localidad"],
+            "propietario": row["propietario"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"]
+        }
+        casos.append(caso_data)
+
+    return casos
