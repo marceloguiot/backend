@@ -79,7 +79,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                 u.nombre,
                 u.id_rol,
                 u.activo,
-                r.clave as rol_clave,
+                r.nombre as rol_nombre,
                 r.descripcion as rol_descripcion
             FROM usuarios u
             INNER JOIN cat_rol r ON r.id_rol = u.id_rol
@@ -112,7 +112,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         token = generar_token()
 
         # Obtener rol del usuario
-        rol = usuario_data.get("rol_clave", "")
+        rol = usuario_data.get("rol_nombre", "")
 
         # Preparar respuesta
         usuario_response = {
