@@ -126,9 +126,13 @@ def consultar_propietarios(
             p.telefono,
             p.email,
             p.estatus,
-            p.fecha_registro
+            p.fecha_registro,
+            u.clave_upp,
+            u.localidad,
+            m.nombre AS municipio_nombre
         FROM propietarios p
         LEFT JOIN upp u ON u.id_propietario = p.id_propietario
+        LEFT JOIN cat_municipio m ON m.id_municipio = u.id_municipio
         WHERE 1=1
     """
     params = {"limit": int(limit)}
@@ -154,7 +158,15 @@ def consultar_propietarios(
         sql += " AND p.estatus = :estatus"
         params["estatus"] = "ACTIVO" if activo else "FINADO"
 
-    # municipio y localidad no existen en la tabla propietarios real, se ignoran
+    # Filtrar por municipio (viene de la UPP)
+    if municipio:
+        sql += " AND m.nombre LIKE :municipio"
+        params["municipio"] = f"%{municipio.strip()}%"
+
+    # Filtrar por localidad (viene de la UPP)
+    if localidad:
+        sql += " AND u.localidad LIKE :localidad"
+        params["localidad"] = f"%{localidad.strip()}%"
 
     sql += " ORDER BY p.id_propietario DESC LIMIT :limit"
 
@@ -176,7 +188,11 @@ def consultar_propietarios(
             "correo": row["email"],  # Alias para frontend
             "estatus": row["estatus"],
             "activo": row["estatus"] == "ACTIVO",  # Mapear estatus -> activo
-            "fecha_registro": row["fecha_registro"]
+            "fecha_registro": row["fecha_registro"],
+            # Info de UPP para mostrar en tabla (no editable desde propietarios)
+            "upp": row["clave_upp"] or "",
+            "municipio": row["municipio_nombre"] or "",
+            "localidad": row["localidad"] or ""
         }
         propietarios.append(propietario_data)
 

@@ -44,6 +44,8 @@ def consultar_hojas_reporte(
     periodo_inicio: Optional[date] = None,
     periodo_fin: Optional[date] = None,
     id_usuario: Optional[int] = None,
+    mvz: Optional[str] = None,  # Filtro por nombre de usuario (para compatibilidad con frontend)
+    fecha: Optional[date] = None,  # Filtro por fecha exacta (para compatibilidad con frontend)
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
     limit: int = Query(100, ge=1, le=500),
@@ -86,6 +88,14 @@ def consultar_hojas_reporte(
     if id_usuario:
         sql += " AND hr.id_usuario = :id_usuario"
         params["id_usuario"] = id_usuario
+
+    if mvz:
+        sql += " AND u.nombre LIKE :mvz"
+        params["mvz"] = f"%{mvz.strip()}%"
+
+    if fecha:
+        sql += " AND DATE(hr.fecha) = :fecha"
+        params["fecha"] = fecha
 
     if fecha_desde:
         sql += " AND hr.fecha >= :fecha_desde"

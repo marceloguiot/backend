@@ -94,6 +94,7 @@ def upp_por_clave(
         "municipio": row["municipio_nombre"],  # Nombre del municipio para frontend
         "localidad": row["localidad"],
         "direccion": row["direccion"],
+        "nombre_predio": row["direccion"] or row["clave_upp"],  # Alias para frontend
         "telefono_contacto": row["telefono_contacto"],
         "estatus": bool(row["estatus"]),
         "fecha_registro": row["fecha_registro"],
@@ -160,6 +161,7 @@ def buscar_upp(
             "municipio": row["municipio_nombre"],
             "localidad": row["localidad"],
             "direccion": row["direccion"],
+            "nombre_predio": row["direccion"] or row["clave_upp"],  # Alias para frontend
             "telefono_contacto": row["telefono_contacto"],
             "estatus": bool(row["estatus"]),
             "fecha_registro": row["fecha_registro"],
@@ -215,6 +217,7 @@ def obtener_upp(id_upp: int, db: Session = Depends(get_db)):
         "municipio": row["municipio_nombre"],
         "localidad": row["localidad"],
         "direccion": row["direccion"],
+        "nombre_predio": row["direccion"] or row["clave_upp"],  # Alias para frontend
         "telefono_contacto": row["telefono_contacto"],
         "estatus": bool(row["estatus"]),
         "fecha_registro": row["fecha_registro"],

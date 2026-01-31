@@ -79,6 +79,7 @@ def consultar_resultados(
             r.id_usuario_valida,
             r.created_at,
             m.codigo_muestra,
+            m.numero_arete,
             m.id_caso,
             c.numero_caso,
             u.clave_upp,
@@ -144,6 +145,7 @@ def consultar_resultados(
             "id_resultado": row["id_resultado_lab"],  # Alias para frontend
             "id_muestra": row["id_muestra"],
             "codigo_muestra": row["codigo_muestra"],
+            "numero_arete": row["numero_arete"],
             "id_prueba": row["id_prueba"],
             "prueba_nombre": row["prueba_nombre"],
             "prueba_realizada": row["prueba_nombre"],  # Alias para frontend
@@ -190,6 +192,7 @@ def obtener_resultado(id_resultado_lab: int, db: Session = Depends(get_db)):
             r.id_usuario_valida,
             r.created_at,
             m.codigo_muestra,
+            m.numero_arete,
             m.id_caso,
             c.numero_caso,
             u.clave_upp,
@@ -220,6 +223,7 @@ def obtener_resultado(id_resultado_lab: int, db: Session = Depends(get_db)):
         "id_resultado": row["id_resultado_lab"],  # Alias para frontend
         "id_muestra": row["id_muestra"],
         "codigo_muestra": row["codigo_muestra"],
+        "numero_arete": row["numero_arete"],
         "id_prueba": row["id_prueba"],
         "prueba_nombre": row["prueba_nombre"],
         "prueba_realizada": row["prueba_nombre"],

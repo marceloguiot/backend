@@ -68,6 +68,7 @@ def consultar_muestras(
     id_especie: Optional[int] = None,
     id_tipo_muestra: Optional[int] = None,
     id_estatus_muestra: Optional[int] = None,
+    estatus: Optional[str] = None,  # Filtro por nombre de estatus (para compatibilidad con frontend)
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
     limit: int = Query(100, ge=1, le=500),
@@ -136,6 +137,10 @@ def consultar_muestras(
     if id_estatus_muestra:
         sql += " AND m.id_estatus_muestra = :id_estatus_muestra"
         params["id_estatus_muestra"] = id_estatus_muestra
+    elif estatus:
+        # Filtrar por nombre de estatus para compatibilidad con frontend
+        sql += " AND em.nombre LIKE :estatus"
+        params["estatus"] = f"%{estatus.strip()}%"
 
     if fecha_desde:
         sql += " AND m.fecha_toma >= :fecha_desde"
